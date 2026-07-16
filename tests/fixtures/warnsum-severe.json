@@ -1,0 +1,18 @@
+{
+  "WRAIN": {
+    "name": "黑色暴雨警告信號",
+    "code": "WRAINB",
+    "actionCode": "ISSUE",
+    "type": "黑色暴雨警告信號",
+    "issueTime": "2026-07-14T10:00:00+08:00",
+    "updateTime": "2026-07-14T10:05:00+08:00"
+  },
+  "WTCSGNL": {
+    "name": "八號東北烈風或暴風信號",
+    "code": "TC8NE",
+    "actionCode": "REISSUE",
+    "issueTime": "2026-07-14T10:10:00+08:00",
+    "updateTime": "2026-07-14T10:20:00+08:00",
+    "expireTime": "2026-07-14T18:00:00+08:00"
+  }
+}

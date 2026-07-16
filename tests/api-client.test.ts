@@ -1,0 +1,221 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  API_ERROR_MESSAGES,
+  clearApiCache,
+  fetchJson,
+  type FetchImplementation,
+} from "@/lib/api/client";
+import {
+  API_CACHE_TTL_MS,
+  API_ENDPOINTS,
+  AQHI_CURRENT_ENDPOINT,
+  HKO_CURRENT_WEATHER_ENDPOINT,
+  HKO_LOCAL_FORECAST_ENDPOINT,
+  HKO_WARNING_SUMMARY_ENDPOINT,
+} from "@/lib/api/endpoints";
+
+const TEST_NOW = Date.parse("2026-07-14T12:00:00.000Z");
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+describe("government API endpoints", () => {
+  it("defines the four official endpoints and their cache TTLs", () => {
+    expect(API_ENDPOINTS).toEqual({
+      weather: HKO_CURRENT_WEATHER_ENDPOINT,
+      warnings: HKO_WARNING_SUMMARY_ENDPOINT,
+      forecast: HKO_LOCAL_FORECAST_ENDPOINT,
+      aqhi: AQHI_CURRENT_ENDPOINT,
+    });
+    expect(API_CACHE_TTL_MS).toEqual({
+      warnings: 60_000,
+      weather: 300_000,
+      forecast: 600_000,
+      aqhi: 900_000,
+    });
+  });
+});
+
+describe("fetchJson", () => {
+  beforeEach(() => {
+    clearApiCache();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("returns JSON, records retrieval time, and reuses a fresh cache entry", async () => {
+    let now = TEST_NOW;
+    const payload = { temperature: 31 };
+    const fetchImpl = vi.fn(async () => jsonResponse(payload));
+
+    const first = await fetchJson(API_ENDPOINTS.weather, {
+      fetchImpl,
+      now: () => now,
+      ttlMs: 1_000,
+    });
+    now += 999;
+    const second = await fetchJson(API_ENDPOINTS.weather, {
+      fetchImpl,
+      now: () => now,
+      ttlMs: 1_000,
+    });
+
+    expect(first).toEqual({
+      ok: true,
+      data: payload,
+      retrievedAt: "2026-07-14T12:00:00.000Z",
+      fromCache: false,
+    });
+    expect(second).toEqual({ ...first, fromCache: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      API_ENDPOINTS.weather,
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("deduplicates concurrent requests using the same cache key", async () => {
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const fetchImpl: FetchImplementation = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+
+    const firstPromise = fetchJson(API_ENDPOINTS.warnings, {
+      fetchImpl,
+      now: () => TEST_NOW,
+    });
+    const secondPromise = fetchJson(API_ENDPOINTS.warnings, {
+      fetchImpl,
+      now: () => TEST_NOW,
+    });
+
+    resolveResponse?.(jsonResponse({}));
+
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(second);
+    expect(first.ok).toBe(true);
+  });
+
+  it("returns a safe error for a non-2xx response", async () => {
+    const result = await fetchJson("https://example.test/http-error", {
+      fetchImpl: async () => jsonResponse({ privateDetail: "do not expose" }, 503),
+      now: () => TEST_NOW,
+      ttlMs: 0,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { type: "http", message: API_ERROR_MESSAGES.http },
+    });
+    expect(JSON.stringify(result)).not.toContain("privateDetail");
+  });
+
+  it("rejects a successful response without an application/json media type", async () => {
+    const result = await fetchJson("https://example.test/html", {
+      fetchImpl: async () =>
+        new Response("<html>upstream error</html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }),
+      now: () => TEST_NOW,
+      ttlMs: 0,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "content-type",
+        message: API_ERROR_MESSAGES["content-type"],
+      },
+    });
+  });
+
+  it("returns an invalid-json error when JSON parsing fails", async () => {
+    const result = await fetchJson("https://example.test/invalid-json", {
+      fetchImpl: async () =>
+        new Response("{not-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      now: () => TEST_NOW,
+      ttlMs: 0,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "invalid-json",
+        message: API_ERROR_MESSAGES["invalid-json"],
+      },
+    });
+  });
+
+  it("aborts an upstream request at the timeout", async () => {
+    vi.useFakeTimers();
+    let receivedSignal: AbortSignal | undefined;
+    const fetchImpl: FetchImplementation = vi.fn((_input, init) => {
+      receivedSignal = init?.signal ?? undefined;
+
+      return new Promise<Response>((_resolve, reject) => {
+        receivedSignal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+
+    const resultPromise = fetchJson("https://example.test/slow", {
+      fetchImpl,
+      now: () => TEST_NOW,
+      timeoutMs: 100,
+      ttlMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(resultPromise).resolves.toEqual({
+      ok: false,
+      error: { type: "timeout", message: API_ERROR_MESSAGES.timeout },
+    });
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it("does not cache failures", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: true }, 500))
+      .mockResolvedValueOnce(jsonResponse({ recovered: true }));
+
+    const first = await fetchJson(API_ENDPOINTS.aqhi, {
+      fetchImpl,
+      now: () => TEST_NOW,
+    });
+    const second = await fetchJson(API_ENDPOINTS.aqhi, {
+      fetchImpl,
+      now: () => TEST_NOW,
+    });
+
+    expect(first.ok).toBe(false);
+    expect(second).toEqual({
+      ok: true,
+      data: { recovered: true },
+      retrievedAt: "2026-07-14T12:00:00.000Z",
+      fromCache: false,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});

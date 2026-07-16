@@ -1,0 +1,33 @@
+[
+  {
+    "station": "Central/Western",
+    "aqhi": "5",
+    "health_risk": "Moderate",
+    "publish_date": "2026-07-14T19:30:00",
+    "unknown_future_field": true
+  },
+  {
+    "station": "Sha Tin",
+    "aqhi": 0,
+    "health_risk": "Low",
+    "publish_date": "2026-07-14T19:30:00"
+  },
+  {
+    "station": "Tung Chung",
+    "aqhi": 7,
+    "health_risk": "Medium",
+    "publish_date": "2026-07-14T19:30:00"
+  },
+  {
+    "station": "Eastern",
+    "aqhi": 4,
+    "health_risk": "Low"
+  },
+  null,
+  {
+    "station": "Causeway Bay",
+    "aqhi": "10+",
+    "health_risk": "Serious",
+    "publish_date": "2026-07-14T19:30:00"
+  }
+]

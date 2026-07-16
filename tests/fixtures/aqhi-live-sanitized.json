@@ -1,0 +1,20 @@
+[
+  {
+    "station": "Central/Western",
+    "aqhi": 2,
+    "health_risk": "Low",
+    "publish_date": "2026-07-14T19:30:00"
+  },
+  {
+    "station": "Sha Tin",
+    "aqhi": 3,
+    "health_risk": "Low",
+    "publish_date": "2026-07-14T19:30:00"
+  },
+  {
+    "station": "Tung Chung",
+    "aqhi": 3,
+    "health_risk": "Low",
+    "publish_date": "2026-07-14T19:30:00"
+  }
+]

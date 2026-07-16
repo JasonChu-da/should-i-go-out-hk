@@ -1,0 +1,13 @@
+{
+  "$metadata": {
+    "kind": "live-sanitized",
+    "retrievedAt": "2026-07-14T20:08:00+08:00"
+  },
+  "WMSGNL": {
+    "name": "強烈季候風信號",
+    "code": "WMSGNL",
+    "actionCode": "ISSUE",
+    "issueTime": "2026-07-14T18:20:00+08:00",
+    "updateTime": "2026-07-14T18:20:00+08:00"
+  }
+}

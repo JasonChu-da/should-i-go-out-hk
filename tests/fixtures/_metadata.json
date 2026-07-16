@@ -1,0 +1,62 @@
+{
+  "rhrread-night-live-sanitized.json": {
+    "kind": "live-sanitized",
+    "source": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc",
+    "retrievedAt": "2026-07-14T20:08:00+08:00",
+    "notes": "保留夜間 uvindex 空字串、雨量 min 缺失、main 空字串等實測差異；站點列已縮減。"
+  },
+  "warnsum-monsoon-live-sanitized.json": {
+    "kind": "live-sanitized",
+    "source": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc",
+    "retrievedAt": "2026-07-14T20:08:00+08:00",
+    "notes": "保留動態 WMSGNL 鍵及缺少 type、expireTime 的實測形狀。"
+  },
+  "flw-live-sanitized.json": {
+    "kind": "live-sanitized",
+    "source": "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc",
+    "retrievedAt": "2026-07-14T20:08:00+08:00",
+    "notes": "保留 tcInfo 及 fireDangerWarning 空字串。"
+  },
+  "aqhi-live-sanitized.json": {
+    "kind": "live-sanitized",
+    "source": "https://dashboard.data.gov.hk/api/aqhi-individual?format=json",
+    "retrievedAt": "2026-07-14T20:08:00+08:00",
+    "notes": "保留實測 number AQHI 與無時區 publish_date；站點列已縮減。"
+  },
+  "rhrread-daytime-uv.json": {
+    "kind": "synthetic",
+    "derivedFrom": "HKO documented daytime shape"
+  },
+  "warnsum-severe.json": {
+    "kind": "synthetic",
+    "purpose": "嚴重警告覆蓋測試"
+  },
+  "warnsum-empty.json": {
+    "kind": "synthetic",
+    "purpose": "成功但沒有警告，須與 request failure 區分"
+  },
+  "rhrread-missing-fields.json": {
+    "kind": "synthetic",
+    "purpose": "缺失 optional fields"
+  },
+  "rhrread-malformed-items.json": {
+    "kind": "synthetic",
+    "purpose": "混合可用及 malformed observation items"
+  },
+  "rhrread-malformed-root.json": {
+    "kind": "synthetic",
+    "purpose": "malformed rhrread root"
+  },
+  "aqhi-malformed-items.json": {
+    "kind": "synthetic",
+    "purpose": "單列失敗不拖垮其餘 AQHI"
+  },
+  "aqhi-malformed-root.json": {
+    "kind": "synthetic",
+    "purpose": "malformed AQHI root"
+  },
+  "aqhi-stale.json": {
+    "kind": "synthetic",
+    "purpose": "freshness validation"
+  }
+}

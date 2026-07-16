@@ -1,0 +1,67 @@
+{
+  "$metadata": {
+    "kind": "live-sanitized",
+    "retrievedAt": "2026-07-14T20:08:00+08:00"
+  },
+  "rainfall": {
+    "data": [
+      {
+        "unit": "mm",
+        "place": "中西區",
+        "max": 0,
+        "main": "FALSE"
+      },
+      {
+        "unit": "mm",
+        "place": "深水埗區",
+        "max": 0,
+        "main": ""
+      },
+      {
+        "unit": "mm",
+        "place": "沙田",
+        "max": 0,
+        "main": "FALSE"
+      }
+    ],
+    "startTime": "2026-07-14T18:45:00+08:00",
+    "endTime": "2026-07-14T19:45:00+08:00"
+  },
+  "warningMessage": [
+    "強烈季候風信號現正生效。"
+  ],
+  "icon": [
+    62
+  ],
+  "iconUpdateTime": "2026-07-14T18:20:00+08:00",
+  "uvindex": "",
+  "updateTime": "2026-07-14T20:02:00+08:00",
+  "temperature": {
+    "data": [
+      {
+        "place": "香港天文台",
+        "value": 28.1,
+        "unit": "C"
+      },
+      {
+        "place": "沙田",
+        "value": 27.6,
+        "unit": "C"
+      }
+    ],
+    "recordTime": "2026-07-14T20:00:00+08:00"
+  },
+  "humidity": {
+    "data": [
+      {
+        "place": "香港天文台",
+        "value": 84,
+        "unit": "percent"
+      }
+    ],
+    "recordTime": "2026-07-14T20:00:00+08:00"
+  },
+  "tcmessage": "",
+  "mintempFrom00To09": "",
+  "rainfallFrom00To12": ""
+}

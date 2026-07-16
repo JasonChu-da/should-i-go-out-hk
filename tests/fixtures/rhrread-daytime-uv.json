@@ -1,0 +1,16 @@
+{
+  "uvindex": {
+    "data": [
+      {
+        "place": "京士柏",
+        "value": 8,
+        "desc": "甚高",
+        "message": "避免長時間在戶外曝曬。"
+      }
+    ],
+    "recordTime": "2026-07-14T12:00:00+08:00",
+    "recordDesc": "過去一小時的平均紫外線指數"
+  },
+  "warningMessage": "",
+  "updateTime": "2026-07-14T12:02:00+08:00"
+}

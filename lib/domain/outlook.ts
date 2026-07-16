@@ -35,6 +35,7 @@ export interface SourceMeta {
 }
 
 export interface NormalizedWeather {
+  conditionIcons: NormalizedMetric<number[]>;
   rainfallMm: NormalizedMetric<number>;
   temperatureC: NormalizedMetric<number>;
   humidityPercent: NormalizedMetric<number>;

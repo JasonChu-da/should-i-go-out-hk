@@ -117,3 +117,140 @@ runtime 原始碼沒有 localStorage、sessionStorage、IndexedDB、database 或
 ### 複核結論
 
 本輪沒有發現需要修改產品程式碼的規格內缺口。除更新 `PLANS.md` 及本 QA 紀錄外，沒有修改 runtime、測試或依賴，也沒有建立 Git commit。
+
+## 2026-07-16：WeatherScene 沉浸式動態背景驗收
+
+### 資料與決策邊界
+
+- 以真實 HTTP 請求重新確認 HKO `rhrread`、`warnsum`、`flw` 及環保署 AQHI 均為 HTTP 200 JSON；WeatherScene 只使用既有 normalized outlook 內的天氣圖示、所選地區過去一小時雨量、警告快照、資料時間及香港時間。
+- `deriveWeatherScene` 為純函數；嚴重警告優先於一般圖示。天氣圖示、雨量或警告快照缺失、失敗、不完整或過時時一律回傳 `neutral`、`animationEnabled: false`，不猜測現在天氣。
+- 日夜門檻固定記錄為香港時間 07:00–17:59 為日間，其餘為夜間；只影響視覺，不進入 scoring input。
+
+### 實際瀏覽器驗收
+
+以只限 development 的 `/scene-preview` 驗收 `clear`、`cloudy`、`overcast`、`rain`、`heavy-rain`、`storm`、`hot`、`neutral` 及 day／night。Production server 實測首頁 HTTP 200、`/scene-preview` HTTP 404。
+
+| Viewport | 驗收結果 |
+| --- | --- |
+| 360 × 800 | 無水平 overflow；所有按鈕最少 44px；首屏看見地區、分數、結論、三項主要建議及三個模式；三項建議底部為 419px、結果區底部為 487px。 |
+| 390 × 844 | 無水平 overflow；模式欄、Hero 及建議保持完整資訊層級。 |
+| 768 × 1024 | 無水平 overflow；決策內容單欄、資料卡兩欄，觸控目標符合要求。 |
+| 1440 × 900 | 無水平 overflow；主決策與輔助資料形成 2 欄層級，來源資訊可見。 |
+
+瀏覽器 console 為 0 error／warning。背景視覺層全部 `pointer-events: none`，不阻擋捲動、按鈕、連結或鍵盤操作。focus ring、hover state、安全區 padding 及可點擊目標均已覆核。
+
+### Motion、對比與效能
+
+- 透過瀏覽器模擬 `prefers-reduced-motion: reduce`：雨滴、雲層、霧氣及天空亮度動畫全部停止，但保留靜態天氣語意；控制顯示「動態背景：已減少」。
+- 手動關閉動態背景後，版本化設定保存在 localStorage，重新載入後仍為關閉；head inline script 在 hydration 前設定 HTML data attribute，避免錯誤動態狀態閃現。
+- 保守取樣的明亮天空 header 合成色上，白色標題對比為 5.77:1、kicker 為 5.07:1；主要內容 surface 上正文為 9.58:1、次要文字為 6.90:1、focus 色為 8.61:1。
+- RainCanvas 使用單一 Canvas、`requestAnimationFrame`、DPR 上限 1.75、依 viewport／硬件能力調低粒子數；頁面 hidden、非雨景或 unmount 時停止及清理 loop。主要 CSS 動畫只改變 `transform` 與 `opacity`。
+- Scene crossfade 只改變 opacity，視覺 key 排除時間及 reason；相同 scene／period／雨勢／severity 更新不會重建背景動畫。
+- 沒有新增圖片或二進制素材，沒有新增 dependency；背景使用 CSS gradient、原創 inline SVG 與 Canvas。
+
+### 自動測試及 production build
+
+| 命令 | 真實結果 |
+| --- | --- |
+| `npm run lint` | 通過；ESLint 0 error。 |
+| `npm test` | 通過；16 test files、278 tests passed。 |
+| `npm run build` | 通過；Next.js 16.2.10 production build 完成。 |
+| `npm run start -- -p 3101` | 啟動成功；`/` 為 200，`/scene-preview` 為 404。 |
+
+已知限制：日夜第一版使用固定本地時間門檻，未計算每天日出日落；HKO 若加入未知 icon 或 warning code，場景會保守降級至 neutral；低階裝置採用啟發式粒子降載，沒有長時間真機 GPU／電量 profiling。
+
+## 2026-07-16：Harbour Sky 視覺系統及普通天氣動畫驗收
+
+### 視覺與場景
+
+- `app/globals.css` 已集中定義指定的 Harbour Sky 背景、surface、品牌、文字、邊框及三組狀態 tokens；品牌／按鈕／focus／一般資訊統一用藍色，綠色只保留資料正常與安全狀態。
+- 晴朗日間含天空漸層、柔和日光、兩個景深的雲及低對比光暈；晴朗夜間含深藍至靛藍天空、16 顆固定星位、月光與城市天光。星層在 cloudy、overcast、rain、storm、hot、neutral 均為透明。
+- 遠景雲實測 CSS 週期為 104／126／138 秒，近景為 64／78 秒；三個光暈為 26／32／38 秒。陰天霧氣及雷暴低亮度 pulse 只改變 transform／opacity。
+- Hero 主卡維持藍色邊框與 surface，安全／警戒／危險只落在小型圖示、狀態 chip 及 score gauge；因素卡、模式選中底板及互動控制不再以綠色作品牌色。
+- development preview 提供 `clear-day`、`clear-night`、`cloudy-day`、`cloudy-night`、`overcast`、`rain-light`、`rain-heavy`、`storm`、`neutral`、`reduced-motion`，另保留 `hot-day`；production smoke test 的 `/scene-preview` 為 HTTP 404。
+
+### Responsive、reduced-motion 與效能
+
+| Viewport | 實際結果 |
+| --- | --- |
+| 360 × 800 | 無水平 overflow；location bottom 129px、mode bottom 193px、Hero bottom 445px，地區、模式、分數、結論及首項建議都在首屏。 |
+| 390 × 844 | 無水平 overflow；Hero bottom 442px，2×2 因素卡由 472px 開始。 |
+| 768 × 1024 | 無水平 overflow；Hero 與 2×2 因素卡保持單欄決策層級。 |
+| 1440 × 900 | 無水平 overflow；Hero 718px、因素區 418px，形成桌面雙欄。 |
+
+- Chrome 模擬 `prefers-reduced-motion: reduce` 時，scene `data-motion` 變為 `off`；雲、光暈、霧氣、Hero 流光及分數動畫的 computed `animation-name` 均為 `none`，控制文字為「動態背景：已減少」。
+- 手動關閉 motion toggle 時，HTML 與 scene 均轉為 `off`，雲、光暈及雷暴 pulse 停止；重新開啟後恢復。Canvas 仍只有一個元素，不建立 DOM 雨滴。
+- Chrome DevTools 短時間取樣的 active storm 場景沒有新增 layout：桌面 development／HMR 活躍樣本 2 秒內 `LayoutCountDelta = 0`、`LayoutDuration = 0`，TaskDuration 約 216.55ms；穩定後的 390px 樣本 3 秒內 TaskDuration 約 5.02ms、ScriptDuration 0.31ms、RecalcStyleDuration 0.73ms、LayoutCountDelta 0。console 為 0 error／warning。
+
+### 最終品質命令
+
+| 命令 | 真實結果 |
+| --- | --- |
+| `npm run typecheck` | 通過；route types generated，TypeScript 0 error。 |
+| `npm run lint` | 通過；ESLint 0 error。 |
+| `npm test` | 通過；16 test files、280 tests passed。 |
+| `npm run build` | 通過；Next.js 16.2.10 production build 完成。 |
+| production smoke test | `/` 為 HTTP 200；`/scene-preview` 為 HTTP 404。 |
+
+沒有新增 dependency。已知限制：日夜仍採固定香港時間門檻而非每日日出日落；Chrome 效能數據是短時間 development 取樣，未涵蓋長時間真機 GPU、耗電或所有 Android 裝置。
+
+## 2026-07-16：第二版本完整驗收及規格內修復
+
+### 相對上一個 commit 的範圍
+
+Git diff 顯示第二版把原有首頁重整為 Harbour Sky 單頁決策介面，新增 inline SVG 圖示、真實天氣驅動的 WeatherScene、Canvas 雨景、日夜／天氣場景、動態偏好、development scene preview，以及天氣圖示 freshness metric 與 browser payload validation。README、PLANS、決策及 QA 文件同步補充架構、部署與視覺決策；沒有新增 production dependency、產品功能、帳戶、資料庫、分析或 API key。
+
+### 真實政府資料與失敗路徑
+
+約 21:35–21:40 HKT 直接 HTTPS GET 四個官方來源，全部為 HTTP 200、`application/json`：
+
+- HKO `rhrread`：object，包含雨量、氣溫、濕度、圖示及夜間空 UV。
+- HKO `warnsum`：object，當時含 `WTS` 雷暴警告。
+- HKO `flw`：object，包含 `forecastDesc` 及 `updateTime`。
+- 環保署 AQHI：17-item array，包含 `station`、`aqhi`、`health_risk`、`publish_date`。
+
+具外網 production route `GET /api/outlook?location=hong-kong` 回傳 `status = ok`，weather／warnings／forecast／AQHI 四來源均為 `ok`；當時正規化為 27°C、最高雨量 0 mm、夜間 UV `notApplicable`、AQHI 3 及 WTS。runtime 搜尋只見 browser → `/api/outlook` → `buildOutlookPayload` → `fetchJson` → 官方 endpoint 的鏈路；fixture 只透過測試 dependency injection 使用。
+
+另以無外網 production server 實測所有 API 失敗：12 秒內收斂至「現在未能可靠評分」，沒有外出分數，顯示重試、香港天文台出口、十八區 fallback 及「0 個資料來源可用」。單一 API failure、warning failure 最高 7、malformed warning 最高 3，則由 aggregate／scoring 自動測試確認。
+
+### 指定情境結果
+
+| 情境 | 驗收結果 |
+| --- | --- |
+| 正常天氣 | 三模式均 10 分、「適合出門」。 |
+| 雷暴警告 | 單獨 WTS：一般 6、運動 3、晾衫 3；均先顯示遠離空曠地方、高地及水邊。當時 live 資料連同濕度及有雨預報為 6／1／0。 |
+| 暴雨警告 | 黃雨為 6／4／3、紅雨為 3／2／1、黑雨三模式最高 1；所有已知 warning × 三模式均有回歸測試。 |
+| 高溫 | 35°C：一般 5、運動 2、晾衫 10；運動模式扣分較重。 |
+| 高 AQHI | AQHI 8：一般 7、運動 3、晾衫 10；不顯著影響晾衫。 |
+| 夜間沒有 UV | normalization 標為 `notApplicable`，不顯示虛構值，也不觸發 missing-data cap。 |
+| 部分 API 失敗 | 保留其他資料、顯示 partial banner／來源錯誤並限制信心。 |
+| 所有 API 失敗 | 實際瀏覽器不顯示分數，提供重試及官方出口。 |
+| 資料過時 | stale 值保留時間與狀態供顯示，但不進入扣分；相關資料不足時最高 7。 |
+| 定位被拒絕 | wrapper 只請求一次並回傳 `denied`；UI 顯示香港整體及 18 區一按 fallback，不傳送或保存精確座標。瀏覽器實測 timeout 走相同 fallback 路徑。 |
+
+### 動態、responsive、accessibility 及效能
+
+- 修正前手動關閉仍有 Hero 10 秒流光、分數 0.52 秒進場及模式列 0.22 秒 transition。修正後 scene、Canvas、Hero、score、mode indicator、panel 及控制 transition 全部停止；14 秒重載提示以零時長 delayed reveal 保留。
+- 模擬 `prefers-reduced-motion: reduce` 且手動偏好為開時，控制讀作「動態背景：已減少」，scene `data-motion = off`，cloud／Hero／score 的 computed animation 均為 `none`。
+- 修正純資訊 data card 的四個多餘 Tab stops；所有互動仍是原生 button／link／summary，頁面有 skip link、唯一 main／h1、繁中 lang、可見 focus。所有可見互動控制均有名稱；沒有正數 tabindex、非語意 onclick 或未隱藏的裝飾 SVG。
+- 主要色彩對比實算：主要文字 17.10:1、次要文字 9.99:1、品牌／focus 10.09:1、警戒文字 8.95:1、危險文字 8.76:1、主按鈕 7.12:1。
+
+| Viewport | 實際結果 |
+| --- | --- |
+| 360 × 800 | scroll width 345 < 360；Hero bottom 445px、建議 bottom 377px；控制項無小於 44×44px。 |
+| 390 × 844 | scroll width 375 < 390；Hero bottom 442px。 |
+| 768 × 1024 | scroll width 753 < 768；Hero／因素卡維持清楚單欄層級。 |
+| 1440 × 900 | scroll width 1425 < 1440；Hero 718px 與因素區 418px 並排。 |
+
+active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration = 0`、TaskDuration 約 302 ms；關閉 motion 後同樣為 0 layout、ScriptDuration 0、TaskDuration 約 58 ms。console 為 0 error／warning。
+
+### 最終品質命令
+
+| 命令 | 結果 |
+| --- | --- |
+| `npm run lint` | 通過；ESLint 0 error。 |
+| `npm test` | 通過；16 test files、287 tests passed。 |
+| `npm run build` | 通過；Next.js 16.2.10 production build，`/api/outlook` 為 dynamic route。 |
+| `npm run typecheck` | 通過；route types generated，TypeScript 0 error。 |
+
+本輪沒有建立 commit、推送、部署或上傳 GitHub。

@@ -51,6 +51,12 @@ describe("normalizeWeather", () => {
       place: "香港天文台",
     });
     expect(result.uvIndex.status).toBe("notApplicable");
+    expect(result.conditionIcons).toMatchObject({
+      status: "stale",
+      value: [62],
+      rawPublishedAt: "2026-07-14T18:20:00+08:00",
+      publishedAt: "2026-07-14T10:20:00.000Z",
+    });
     expect(result.icons).toEqual([62]);
     expect(result.warningMessages).toEqual(["強烈季候風信號現正生效。"]);
     expect(result.specialWeatherTips).toEqual([]);
@@ -232,11 +238,12 @@ describe("normalizeWeather", () => {
     );
 
     expect([
+      result.conditionIcons.status,
       result.rainfallMm.status,
       result.temperatureC.status,
       result.humidityPercent.status,
       result.uvIndex.status,
-    ]).toEqual(["missing", "missing", "missing", "missing"]);
+    ]).toEqual(["missing", "missing", "missing", "missing", "missing"]);
     expect(result.source.status).toBe("unavailable");
     expect(result.warningMessages).toEqual([]);
   });

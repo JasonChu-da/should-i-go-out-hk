@@ -179,6 +179,16 @@ export function normalizeWeather(
   retrievedAt: string,
   now: Date,
 ): NormalizedWeather {
+  const icons = [...(value.icon ?? [])];
+  const rawIconPublishedAt = value.iconUpdateTime ?? null;
+  const conditionIcons = createTimedMetric({
+    value: icons.length > 0 ? icons : null,
+    label: "天氣狀況",
+    rawPublishedAt: rawIconPublishedAt,
+    normalizedPublishedAt: normalizeHkoTimestamp(value.iconUpdateTime),
+    now,
+    maxAge: FRESHNESS_THRESHOLDS_MS.weather,
+  });
   const district =
     locationId === "hong-kong" ? undefined : getDistrictById(locationId);
   const rainfallItems = value.rainfall?.data ?? [];
@@ -235,6 +245,7 @@ export function normalizeWeather(
 
   const uvIndex = normalizeUv(value, now);
   const metrics: NormalizedMetric<unknown>[] = [
+    conditionIcons,
     rainfallMm,
     temperatureC,
     humidityPercent,
@@ -255,11 +266,12 @@ export function normalizeWeather(
   );
 
   return {
+    conditionIcons,
     rainfallMm,
     temperatureC,
     humidityPercent,
     uvIndex,
-    icons: [...(value.icon ?? [])],
+    icons,
     warningMessages:
       value.warningMessage === "" || value.warningMessage === undefined
         ? []

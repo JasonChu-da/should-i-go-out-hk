@@ -5,7 +5,7 @@ export function LoadingState() {
     <section className="loading-state" aria-live="polite" aria-busy="true">
       <span className="spinner" aria-hidden="true" />
       <div className="loading-copy">
-        <h2>正在整理最新官方資料</h2>
+        <h2>正在整理最新官方資料…</h2>
         <p>天氣、雨量、紫外線、警告和空氣質素會分開核對。</p>
         <p className="loading-timeout-hint">
           載入時間比預期長。<Link href="/">重新載入整頁</Link>

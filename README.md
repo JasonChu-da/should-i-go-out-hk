@@ -13,6 +13,8 @@
 - 每個來源分別顯示發布／確認時間及本站擷取時間。
 - 支援 loading、部分失敗、完全失敗、重試、過時及 malformed 資料狀態。
 - 嚴重警告覆蓋一般分數；警告未確認或相關資料不足時限制結論信心。
+- 全頁天氣背景只按 fresh 天文台圖示、所選地區雨量、結構化警告及香港時間決定；資料不足或過時時使用 neutral 靜態背景。
+- 支援 `prefers-reduced-motion` 及「動態背景：開／關」；只把這一項視覺偏好存於 localStorage，不儲存位置或天氣資料。
 
 ## 資料流程與架構
 
@@ -39,6 +41,8 @@
 - `lib/scoring/`：集中門檻及 pure deterministic scoring。
 - `lib/outlook/`：四來源聚合、failure isolation、scoring input。
 - `components/`：手機 UI、模式、地區、資料卡及錯誤狀態。
+- `components/weather-scene/`：背景 crossfade、原創 SVG 雲層、Canvas 雨線、readability overlay 及動態控制。
+- `lib/weather-scene/`：pure scene derivation、HKO icon mapping 與 scene themes。
 - `tests/fixtures/`：經整理的實測 API fixture；自動測試不連 live API。
 
 ## 官方資料來源
@@ -61,6 +65,8 @@ npm run dev
 
 開啟 `http://localhost:3000`。專案不需要 `.env`、API key、帳戶或資料庫。
 
+開發環境另有 `http://localhost:3000/scene-preview`，可人工切換 clear、cloudy、overcast、rain、heavy rain、storm、hot、neutral 及日／夜色調。此 route 在 production 直接回傳 404。
+
 已有 lockfile 的乾淨環境可用 `npm ci` 代替 `npm install`。
 
 ### 本機疑難排解
@@ -81,9 +87,59 @@ npm run start
 
 `npm test` 全部使用本地 fixture，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
 
-## 免費部署
+## Vercel Hobby 免費部署
 
-本專案含動態 server route，因此不可部署成純靜態網站。可把 repository 匯入 [Vercel](https://vercel.com/new)，保留自動偵測的 Next.js 設定，無需新增環境變數；部署平台必須容許 server runtime 對 HKO 與 AQHI 官方 endpoint 發出 HTTPS 請求。Vercel Hobby 目前有免費使用額度，但應在部署前查閱[最新方案與用量上限](https://vercel.com/pricing)。
+本專案含動態 `/api/outlook` server route，不能部署成純靜態網站。Vercel 會把該 Route Handler 自動建置成 Node.js Function；不需要 `vercel.json`、資料庫、付費整合、環境變數或 API key。
+
+### 使用免費方案前先確認
+
+- Vercel Hobby 是免費方案，但只適用於個人、非商業用途；限制及免費額度可能改變，部署前請查看 [Hobby 方案](https://vercel.com/docs/plans)、[Fair Use Guidelines](https://vercel.com/docs/limits/fair-use-guidelines) 及 [Usage](https://vercel.com/docs/pricing/manage-and-optimize-usage)。
+- Vercel 網站以 Git repository 匯入專案。先把專案放到 Vercel 支援的 Git provider，例如 GitHub、GitLab 或 Bitbucket；本步驟不需要把 repository 設為公開。
+- Vercel Hobby 可能拒絕作者不是該 Hobby 帳戶擁有者的 Git deployment。準備上傳前，請確保最新 commit 使用 Git provider 能識別的姓名及已驗證電郵／noreply 電郵，不要以 `Local Developer <local-developer@localhost>` 作為準備部署的最新 commit 作者。詳見 [Vercel Git deployments](https://vercel.com/docs/git)。
+- 先在本機執行以下部署前檢查，全部通過才上傳：
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+### 在 Vercel 網站建立專案
+
+1. 登入 [Vercel](https://vercel.com/)，並在 team switcher 選擇你的個人 Hobby 帳戶。
+2. 在 Dashboard 右上角按 **New Project**（部分介面顯示 **Add New… → Project**）。
+3. 如尚未連接 Git provider，按畫面指示連接 GitHub、GitLab 或 Bitbucket，並只授權需要部署的 repository。
+4. 在 repository 清單找到本專案，按 **Import**。
+5. 在 **Configure Project** 頁面核對：
+   - **Project Name**：可保留預設值，或改成容易辨識的名稱。
+   - **Framework Preset**：`Next.js`。
+   - **Root Directory**：repository 根目錄 `./`；不要選 `.next` 或其他子目錄。
+   - **Build Command**：保留 Next.js 自動設定的 `npm run build`，不要啟用 Override。
+   - **Output Directory**：保留自動設定，不要填 `.next`。
+   - **Install Command**：保留自動偵測；有 `package-lock.json` 時 Vercel 會使用 npm 安裝。
+   - **Environment Variables**：保持空白。本專案不需要 secret 或 API key。
+6. 按 **Deploy**，等待 build 完成並顯示 **Ready**。Vercel 的 Next.js 自動設定詳見 [Deploying Git Repositories](https://vercel.com/docs/git) 及 [Configuring a Build](https://vercel.com/docs/builds/configure-a-build)。
+
+### 部署後設定與驗證
+
+1. 首次部署完成後，進入 **Project → Settings → Functions → Function Regions**，把唯一 Function region 選為香港 `hkg1`，按 **Save**。Hobby 可選一個 region；把 Function 放近香港政府資料來源可減少網絡延遲。設定後到 **Deployments** 對最新 deployment 按 **Redeploy**，讓新 region 生效。
+2. Node.js 可保留 Vercel 預設的最新 LTS。專案要求 Node.js 20.9 或以上，而 Vercel 目前支援 20.x、22.x 及 24.x；如需手動選擇，可在 **Settings → Build and Deployment → Node.js Version** 選擇 24.x。詳見 [Supported Node.js versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)。
+3. 按 deployment 的 **Visit** 開啟正式網址，確認首頁能顯示繁體中文介面，並能在合理時間內由載入狀態轉成結果或可重試錯誤。
+4. 直接開啟 `https://你的網域/api/outlook?location=hong-kong`，確認收到 JSON，而不是 404、HTML 錯誤頁或永久載入。
+5. 在首頁切換三種活動模式、選擇一個地區及按一次重試，確認 route 與互動均正常。
+6. 到 **Deployments → 最新 deployment → Resources／Functions** 找到 `/api/outlook`，確認它是 Node.js Function；如有問題，再查看該 deployment 的 **Runtime Logs**。
+7. 到 Dashboard 的 **Usage** 定期查看 Function invocations、Active CPU、Provisioned Memory、資料傳輸及 build 用量，避免超出 Hobby 公平使用範圍。
+
+### Vercel runtime 與快取行為
+
+- `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
+- 四個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
+- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。
+- HTTP、網絡、timeout、Content-Type 或 JSON 解碼失敗不會寫入快取。若上游回傳可解碼但 schema malformed 的 JSON，該原始回應可能保留至短期 TTL 屆滿；runtime validation 仍會把相關來源標為不可用，絕不把 malformed 值納入計分。
+- 記憶體 cache 不會跨 cold start、重新部署或不同 Function instance 共享，因此只能減少部分重複請求，不能視作可靠的持久 cache。這符合 MVP「無資料庫」限制。
+- 新 Vercel 專案預設啟用 Fluid compute；Hobby 的預設 Function duration 足以涵蓋應用本身的 8 秒上游 timeout，毋須額外提高 duration 或購買付費方案。最新上限仍應以 [Vercel Function duration](https://vercel.com/docs/functions/configuring-functions/duration) 為準。
 
 亦可部署到任何支援 Node.js 的平台：執行 `npm ci && npm run build`，再以 `npm run start` 啟動。詳見 [Next.js 官方部署文件](https://nextjs.org/docs/app/getting-started/deploying)。
 

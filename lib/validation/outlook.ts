@@ -117,6 +117,11 @@ export function isOutlookPayload(value: unknown): value is OutlookPayload {
   const aqhi = value.aqhi;
 
   return (
+    isMetric(
+      weather.conditionIcons,
+      (candidate): candidate is number[] =>
+        Array.isArray(candidate) && candidate.every(isFiniteNumber),
+    ) &&
     isMetric(weather.rainfallMm, isFiniteNumber) &&
     isMetric(weather.temperatureC, isFiniteNumber) &&
     isMetric(weather.humidityPercent, isFiniteNumber) &&

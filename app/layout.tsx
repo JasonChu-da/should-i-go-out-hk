@@ -11,14 +11,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f1e8" },
-    { media: "(prefers-color-scheme: dark)", color: "#101916" },
+    { media: "(prefers-color-scheme: light)", color: "#061827" },
+    { media: "(prefers-color-scheme: dark)", color: "#061827" },
   ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="zh-Hant-HK">
+    <html lang="zh-Hant-HK" data-weather-motion="on" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{document.documentElement.dataset.weatherMotion=localStorage.getItem('weather-scene-motion:v1')==='off'?'off':'on'}catch(e){}",
+          }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

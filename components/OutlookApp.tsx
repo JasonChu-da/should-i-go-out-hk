@@ -12,6 +12,12 @@ import { ResultHero } from "@/components/ResultHero";
 import { SourceDetails } from "@/components/SourceDetails";
 import { CompleteFailure, LoadingState } from "@/components/States";
 import { WarningsPanel } from "@/components/WarningsPanel";
+import {
+  MotionToggle,
+  useMotionPreference,
+  usePrefersReducedMotion,
+} from "@/components/weather-scene/MotionToggle";
+import { WeatherScene } from "@/components/weather-scene/WeatherScene";
 import type { OutlookPayload } from "@/lib/domain/outlook";
 import {
   getDistrictById,
@@ -21,9 +27,10 @@ import {
 import { requestDistrictFromGeolocation } from "@/lib/location/geolocation";
 import { fetchOutlookRoute } from "@/lib/outlook/browser-client";
 import { toScoringInput } from "@/lib/outlook/scoring-input";
-import { formatHktDateTime } from "@/lib/presentation/format";
+import { formatHktTime } from "@/lib/presentation/format";
 import { scoreOutlook } from "@/lib/scoring/score";
 import type { ActivityMode } from "@/lib/scoring/types";
+import { deriveWeatherScene } from "@/lib/weather-scene/derive-weather-scene";
 
 interface RouteResponseState {
   key: string;
@@ -59,6 +66,8 @@ export default function OutlookApp() {
   const locationRequested = useRef(false);
   const manualSelection = useRef(false);
   const shouldMoveFocus = useRef(false);
+  const [motionEnabled, setMotionEnabled] = useMotionPreference();
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (locationRequested.current) return;
@@ -144,18 +153,33 @@ export default function OutlookApp() {
     (locationId === HONG_KONG_WIDE.id
       ? "非地區化結果；雨量及 AQHI 採用全港有效資料中的保守代表值。"
       : "按地區雨量及官方代表監測站評估。");
+  const weatherScene = useMemo(() => deriveWeatherScene(payload), [payload]);
 
   return (
-    <main className="app-shell">
+    <>
+    <WeatherScene
+      scene={weatherScene}
+      motionEnabled={motionEnabled}
+      reducedMotion={reducedMotion}
+    />
+    <a className="skip-link" href="#main-content">跳至主要內容</a>
+    <main
+      className="app-shell"
+      id="main-content"
+      tabIndex={-1}
+      data-scene={weatherScene.scene}
+      data-period={weatherScene.period}
+    >
       <header className="site-header">
-        <div>
-          <p className="brand-kicker">香港即時外出指引</p>
+        <div className="site-header-copy">
+          <p className="brand-kicker">出門前，望一望</p>
           <h1>香港現在適合出門嗎？</h1>
         </div>
-        <p className="header-update" aria-live="polite">
-          <span aria-hidden="true">↻</span>{" "}
-          {latestUpdate ? `最新資料 ${formatHktDateTime(latestUpdate)}` : loading ? "正在更新資料" : "等待可用資料"}
-        </p>
+        <MotionToggle
+          enabled={motionEnabled}
+          reducedMotion={reducedMotion}
+          onChange={setMotionEnabled}
+        />
       </header>
 
       <LocationControls
@@ -164,6 +188,7 @@ export default function OutlookApp() {
         status={locationStatus}
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((open) => !open)}
+        updateLabel={latestUpdate ? `更新於 ${formatHktTime(latestUpdate)}` : loading ? "正在更新…" : "等待資料"}
       />
 
       <ModeTabs mode={mode} onChange={setMode} />
@@ -183,11 +208,14 @@ export default function OutlookApp() {
       ) : null}
 
       {!loading && payload && payload.status !== "error" && result ? (
-        <ResultHero
-          result={result}
-          mode={mode}
-          dataLimited={payload.status === "partial"}
-        />
+        <div className="decision-layout">
+          <ResultHero
+            result={result}
+            mode={mode}
+            dataLimited={payload.status === "partial"}
+          />
+          <DataCards weather={payload.weather} aqhi={payload.aqhi} />
+        </div>
       ) : null}
 
       {pickerOpen ? (
@@ -195,11 +223,10 @@ export default function OutlookApp() {
       ) : null}
 
       {!loading && payload && payload.status !== "error" && result ? (
-        <>
-          <DataCards weather={payload.weather} aqhi={payload.aqhi} />
+        <div className="support-layout">
           <WarningsPanel warnings={payload.warnings} forecast={payload.forecast} weather={payload.weather} />
           <SourceDetails sources={payload.sources} />
-        </>
+        </div>
       ) : null}
 
       {!loading && payload?.status === "error" ? <SourceDetails sources={payload.sources} /> : null}
@@ -213,5 +240,6 @@ export default function OutlookApp() {
         </div>
       </footer>
     </main>
+    </>
   );
 }

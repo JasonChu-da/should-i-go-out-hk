@@ -85,6 +85,22 @@ describe("scoreOutlook", () => {
     expect(scoreOutlook(input, "laundry").score).toBe(10);
   });
 
+  it.each<ActivityMode>(["general", "exercise", "laundry"])(
+    "does not treat unavailable night-time UV as a risk or missing-data cap in %s mode",
+    (mode) => {
+      const input = normalInput();
+      input.uvIndex = { status: "notApplicable" };
+
+      const result = scoreOutlook(input, mode);
+
+      expect(result.score).toBe(10);
+      expect(result.verdict).toBe("suitable");
+      expect(result.ignoredFactors).not.toContainEqual(
+        expect.objectContaining({ id: "uv" }),
+      );
+    },
+  );
+
   it("penalizes high AQHI more for exercise and not for laundry", () => {
     const input = normalInput();
     input.aqhi = fresh({ value: 8, display: "8" });
@@ -92,6 +108,27 @@ describe("scoreOutlook", () => {
     expect(scoreOutlook(input, "exercise").score).toBe(3);
     expect(scoreOutlook(input, "laundry").score).toBe(10);
   });
+
+  it.each([
+    ["general", 6, "prepare"],
+    ["exercise", 3, "avoid"],
+    ["laundry", 3, "avoid"],
+  ] as const)(
+    "gives a cautious thunderstorm result in %s mode",
+    (mode, expectedScore, expectedVerdict) => {
+      const input = normalInput();
+      input.warnings = fresh([
+        { family: "WTS", code: "WTS", name: "雷暴警告" },
+      ]);
+
+      const result = scoreOutlook(input, mode);
+
+      expect(result.score).toBe(expectedScore);
+      expect(result.verdict).toBe(expectedVerdict);
+      expect(result.summary).toContain("雷暴警告現正生效");
+      expect(result.recommendations[0]).toContain("遠離空曠地方");
+    },
+  );
 
   it("uses only fresh AQHI data", () => {
     const input = normalInput();

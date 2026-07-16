@@ -91,3 +91,61 @@
 - [x] 以 1280 × 720 viewport 實測桌面四欄資料卡且無水平 overflow；複核 dark mode 及 reduced-motion CSS
 - [x] 拒絕定位由單元測試確認只請求一次並回傳 `denied`；受控瀏覽器實測 timeout fallback 使用相同香港整體／十八區介面
 - [x] 未發現需要修改產品程式碼的規格內缺口；本輪只更新驗收文件
+
+## 2026-07-16：Vercel 部署前檢查
+
+- [x] 複核 Next.js dynamic Route Handler、Node.js runtime 相容性及 Vercel Hobby 部署限制
+- [x] 複核四個政府 API 的 8 秒 timeout、並行 failure isolation、短期 instance-memory cache 及錯誤分類
+- [x] 以 Vercel／Next.js 官方文件核對 Git 匯入、Node.js、Function duration、region、Hobby fair use 及網站操作流程
+- [x] 擴充 README：免費方案前提、完整 Vercel 匯入設定、`hkg1`、部署後 smoke test、runtime 與 cache 限制
+- [x] 執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`；15 files／259 tests 及 production build 全部通過
+- [x] 核對最終 Git 差異只包含部署文件，且沒有部署、上傳或建立 commit
+
+## 2026-07-16：首頁 UI／UX 重設計
+
+- [x] 以桌面截圖、產品規格及現有元件完成第一階段設計審核
+- [x] 定義「香港天空氣象卡片」資訊架構、responsive wireframe、色彩與字體 tokens
+- [x] 實作緊湊位置列、活動模式、決策 Hero、四項因素、警告／預報及來源 accordion
+- [x] 保留定位、十八區、資料錯誤、freshness、評分與所有 API 行為
+- [x] 以最新 Web Interface Guidelines 審核 UI 並修復重要問題
+- [x] 依 Vercel React Best Practices 複核元件、重繪及 bundle 行為
+- [x] 驗收 desktop、360px mobile、鍵盤、focus、dark mode 及 reduced motion
+- [x] 執行 `npm run lint`、`npm test`、`npm run build`；0 lint error、15 files／260 tests 及 production build 全部通過
+
+## 2026-07-16：實際天氣驅動的沉浸式 WeatherScene
+
+- [x] 閱讀全部專案文件、weather normalization、freshness、scoring、現有 UI 與指定設計／React skills
+- [x] 實測四個官方端點並核對 HKO 天氣圖示編號；確認 icon、地區雨量、警告快照與香港時間足以作 deterministic scene mapping
+- [x] 建立純函數 `deriveWeatherScene`、集中圖示／警告 mapping、scene themes 及完整單元測試
+- [x] 在 normalization 保留 icon freshness，缺失／過時／警告未確認時使用 neutral 靜態場景
+- [x] 建立全頁背景、SVG 雲層、Canvas 雨線、readability overlay、crossfade 與動態背景控制
+- [x] 重整首頁 surface、typography 與 responsive hierarchy，同時保留定位、評分、警告及所有錯誤狀態
+- [x] 建立只限 development 的 scene preview，驗收 clear／cloudy／rain／heavy rain／storm／neutral
+- [x] 依 Web Interface Guidelines 與 Vercel React Best Practices 完成 accessibility／performance 稽核
+- [x] 驗收 360×800、390×844、768×1024、1440×900、reduced-motion、鍵盤、focus、contrast 及無水平 overflow
+- [x] 執行 `npm run lint`、`npm test`、`npm run build` 並記錄真實結果
+
+## 2026-07-16：Harbour Sky 視覺系統及普通天氣環境動畫
+
+- [x] 檢查現有 theme tokens、WeatherScene、香港時間、HKO icon mapping、雲雨實作、motion toggle 與測試
+- [x] 以真實請求重新核對 HKO 即時天氣／警告／預報及環保署 AQHI 回應格式
+- [x] 集中建立 Harbour Sky 藍色 design tokens，分離品牌色與安全／警戒／危險狀態色
+- [x] 建立日間天空、晴朗夜空、稀疏星光、分層慢雲、環境光暈與陰天霧氣
+- [x] 統一藍灰雨景、低亮度雷暴天空變化及 Canvas 動畫生命週期
+- [x] 加入 Hero 邊緣流光、分數變更、因素卡及滑動模式切換微動畫
+- [x] 擴充 development Weather Scene Preview 至指定十種驗收狀態
+- [x] 驗收 360×800、390×844、768×1024、1440×900、reduced-motion、鍵盤、對比及動畫效能
+- [x] 執行 `npm run lint`、`npm test`、`npm run build` 並記錄真實結果
+
+## 2026-07-16：第二版本完整驗收
+
+- [x] 檢查相對上一個 commit 的 tracked／untracked Git diff，確認第二版集中於首頁 UI、WeatherScene、Harbour Sky、動態控制、天氣圖示 freshness、文件及測試
+- [x] 直接請求 HKO `rhrread`、`warnsum`、`flw` 及環保署 AQHI，並以 production `/api/outlook` 確認 4／4 官方來源均為 `ok`，runtime 沒有 mock／fixture
+- [x] 驗證正常天氣、雷暴、黃／紅／黑雨、高溫、高 AQHI、夜間 UV 不適用、部分／全部 API 失敗、stale 及定位拒絕
+- [x] 特別複核雷暴警告的三模式；純 WTS 規則為一般 6、運動 3、晾衫 3，實際當時連同濕度及有雨預報為 6／1／0，結論及建議符合模式風險
+- [x] 修正手動關閉後 Hero／分數／模式列微動畫仍運作；現在所有非必要 CSS motion 與 Canvas loop 一併停止，功能性 14 秒重載提示保留
+- [x] 修正四張純資訊卡不必要的 `tabIndex=0`，並恢復 skip-link 目標的可見 focus indicator
+- [x] 實測 360×800、390×844、768×1024、1440×900；無水平 overflow，控制項至少 44px，主要結果在手機首屏內
+- [x] 複核鍵盤原生控制、focus、螢幕閱讀器名稱、heading／main 語意、文字對比及 console；沒有未命名控制、正 tabindex 或 console error／warning
+- [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；16 files／287 tests、production build 及 TypeScript 全部通過
+- [x] 沒有建立 commit、推送、部署或上傳 GitHub

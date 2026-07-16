@@ -76,6 +76,7 @@ function unavailableWeather(retrievedAt: string, message: string): NormalizedWea
     message,
   );
   return {
+    conditionIcons: createUnavailableMetric("天氣狀況", "failed", message),
     rainfallMm: createUnavailableMetric("雨量", "failed", message),
     temperatureC: createUnavailableMetric("氣溫", "failed", message),
     humidityPercent: createUnavailableMetric("相對濕度", "failed", message),

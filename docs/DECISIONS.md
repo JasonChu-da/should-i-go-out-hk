@@ -1,6 +1,6 @@
 # 技術決策紀錄
 
-更新日期：2026-07-14
+更新日期：2026-07-16
 
 ## D-001：使用單一聚合 server route
 
@@ -110,3 +110,31 @@ AQHI 以英文 station id 做官方資料配對，但 UI 只顯示繁體中文�
 瀏覽器呼叫內部 `/api/outlook` 時另設 12 秒 deadline，長於 server 端單一官方來源的 8 秒 timeout。只有因 React effect cleanup 而由 caller signal 主動取消的舊請求可以靜默忽略；timeout、HTTP、格式、網絡及仍 mounted 時收到的 `AbortError` 都必須寫入同一個可重試失敗狀態。SSR loading 卡另以純 HTML／CSS 延遲顯示「重新載入整頁」連結，令 client hydration 未啟動時仍有操作出口。
 
 理由：server 到政府 API 的 timeout 不等於瀏覽器到內部 route 的 deadline。若內部 route 或 response body 永不完成，或把非 cleanup abort 一律吞掉，原本以 request key 判斷的 loading 會永久為真。獨立邊界與明確終止狀態可避免用預設資料掩飾錯誤，同時保留 React Strict Mode 及地區切換所需的正常取消行為。
+
+## D-018：首頁採「天空狀態帶」決策層級，不增加圖示依賴
+
+首頁以緊湊位置列、活動 segmented control、狀態化 Hero 與 2 × 2 主要因素組成首屏。桌面以約 65／35 比例分開「外出決策」與「環境脈絡」，手機則維持單欄及 360px 無橫向捲動。安全、警戒及危險狀態同時使用文字、符號與色彩；長預報及逐來源時間移入原生 `details` accordion。
+
+圖示採用專案內輕量 inline SVG，統一使用圓角線條與 `currentColor`，不新增 production dependency。所有視覺 tokens 集中於 `app/globals.css`，並保留系統深色模式及 reduced-motion。
+
+理由：把首頁從資料目錄轉為普通市民可在數秒內理解的決策工具，同時避免為少量靜態圖示增加 bundle、供應鏈與維護成本。
+
+## D-019：WeatherScene 只由 fresh 官方資料與香港時間推導
+
+新增 pure `deriveWeatherScene(weatherData)`，集中把 HKO `rhrread.icon`、所選地區過去一小時雨量、`warnsum` 及 payload `generatedAt` 映射為 scene、日夜、雨勢、嚴重度、動畫開關及可解釋原因。結構化嚴重警告優先於一般圖示；雨量以 `<2.5`、`2.5–<10`、`≥10 mm` 對應 light、medium、heavy。第一版固定以香港時間 07:00–17:59 為日間，其餘為夜間；只影響色調，不進入評分。
+
+Normalization 額外把 `iconUpdateTime` 保存成 `conditionIcons` metric，沿用既有 weather 90 分鐘 freshness 門檻。警告快照不可用／不完整、icon 或雨量 missing／malformed／stale 時使用 neutral 靜態背景；不以預報文字、隨機 scene 或其他來源猜測現況。已確認的嚴重警告本身足以覆蓋一般圖示。
+
+視覺只使用 CSS gradient、原創 inline SVG 雲層及 Canvas 雨線，不新增圖像或 dependency。Canvas 的隨機值只控制雨線位置，不參與天氣判斷；scene 選擇完全 deterministic。動態偏好使用版本化 localStorage key `weather-scene-motion:v1`，只保存 `on`／`off`，不包含位置、天氣或其他使用資料；reduced-motion 永遠優先停用動態效果。
+
+理由：背景是資料的輔助表達，不可比評分及警告更具推測性。獨立 pure function、freshness metric 與 stable visual key 令 mapping 可測試，並避免相同 scene 的資料刷新重啟動畫。
+
+## D-020：Harbour Sky 藍色是品牌，狀態色只表達狀態
+
+全站固定以 `#061827`／`#0A2740` 深海藍作背景、`#49A9F8`／`#78CBFF` 作品牌及互動色，並在 `app/globals.css` 集中保存 surface、文字、邊框、focus 與 safe／warning／danger tokens。綠色只用於適合出門、資料正常或成功；黃色只用於警戒；紅色只用於危險。Hero 與一般卡片的 surface、邊框及高光保持藍色，不再以 verdict 狀態色染滿主卡。
+
+普通天氣以分拆的背景、固定星位夜空、三個環境光暈、遠近兩層雲、霧氣 overlay 及既有 Canvas 雨景組合。星星只在 `clear + night` 顯示；雲與光暈只動畫化 `transform`／`opacity`；雨景在頁面隱藏、motion off 或 reduced-motion 時停止 requestAnimationFrame。development preview 提供明確命名的日／夜、多雲、陰天、小雨、大雨、雷暴、中性及減少動態場景。
+
+使用者關閉動態偏好時，所有非必要 CSS animation／transition 及 Canvas loop 一併停止，而不只停止天氣背景；14 秒後顯示的整頁重載提示屬功能性錯誤出口，保留零時長的延遲揭示。`prefers-reduced-motion` 仍具最高優先權，即使手動偏好為開啟亦只顯示靜態內容。
+
+理由：把品牌與安全語意分開可避免「全站都是安全綠」的混亂；固定、低對比的天空層令普通天氣有生命力，同時維持 deterministic scene、文字可讀性、低主線程成本及無 layout shift。

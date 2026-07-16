@@ -3,6 +3,7 @@ import {
   HONG_KONG_WIDE,
   type LocationId,
 } from "@/lib/location/districts";
+import { AppIcon } from "@/components/AppIcon";
 
 export type LocationUiStatus =
   | "locating"
@@ -23,12 +24,23 @@ const LOCATION_MESSAGES: Record<LocationUiStatus, string> = {
   unavailable: "暫時無法定位，現先顯示香港整體資料。",
 };
 
+const LOCATION_STATUS_LABELS: Record<LocationUiStatus, string> = {
+  locating: "正在定位…",
+  located: "已使用定位",
+  manual: "已選擇地區",
+  denied: "定位被拒絕",
+  unsupported: "未能使用定位",
+  timeout: "定位逾時",
+  unavailable: "定位暫不可用",
+};
+
 interface LocationControlsProps {
   locationLabel: string;
   locationNote: string;
   status: LocationUiStatus;
   pickerOpen: boolean;
   onTogglePicker: () => void;
+  updateLabel?: string;
 }
 
 export function LocationControls({
@@ -37,17 +49,21 @@ export function LocationControls({
   status,
   pickerOpen,
   onTogglePicker,
+  updateLabel = "等待更新",
 }: LocationControlsProps) {
   return (
     <section className="location-panel" aria-labelledby="location-heading">
       <div className="location-summary">
-        <div>
-          <p className="eyebrow" id="location-heading">
-            評估範圍
-          </p>
-          <p className="location-name">
-            <span aria-hidden="true">◎</span> {locationLabel}
-          </p>
+        <div className="location-primary">
+          <span className="location-icon"><AppIcon name="location" /></span>
+          <div>
+            <h2 className="location-name" id="location-heading">{locationLabel}</h2>
+            <p className="location-meta">
+              <span>{LOCATION_STATUS_LABELS[status]}</span>
+              <span aria-hidden="true">·</span>
+              <span>{updateLabel}</span>
+            </p>
+          </div>
         </div>
         <button
           className="text-button"
@@ -59,10 +75,10 @@ export function LocationControls({
           {pickerOpen ? "收起地區" : "更改地區"}
         </button>
       </div>
-      <p className="location-message" role="status">
-        {LOCATION_MESSAGES[status]}
+      <p className="location-detail" role="status">
+        <span>{LOCATION_MESSAGES[status]}</span>
+        <span>{locationNote}</span>
       </p>
-      <p className="location-note">{locationNote}</p>
     </section>
   );
 }

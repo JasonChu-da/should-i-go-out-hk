@@ -55,6 +55,18 @@ describe("browser outlook payload boundary", () => {
         ...payload,
         weather: {
           ...payload.weather,
+          conditionIcons: {
+            ...payload.weather.conditionIcons,
+            value: ["64"],
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isOutlookPayload({
+        ...payload,
+        weather: {
+          ...payload.weather,
           temperatureC: { ...payload.weather.temperatureC, value: "30" },
         },
       }),

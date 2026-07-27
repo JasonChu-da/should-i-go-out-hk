@@ -53,6 +53,32 @@ describe("buildOutlookPayload failure handling", () => {
     expect(payload.weather.rainfallMm.value).toBe(0);
   });
 
+  it("keeps and scores an official Very high AQHI response", async () => {
+    const payload = await buildOutlookPayload("hong-kong", {
+      fetcher: fixtureFetcher({
+        [API_ENDPOINTS.aqhi]: success([
+          {
+            station: "Sha Tin",
+            aqhi: 9,
+            health_risk: "Very high",
+            publish_date: "2026-07-14T19:30:00",
+          },
+        ]),
+      }),
+      now: () => NOW,
+    });
+    const result = scoreOutlook(toScoringInput(payload), "exercise");
+
+    expect(payload.aqhi.aqhi).toMatchObject({
+      status: "fresh",
+      value: { value: 9, display: "9" },
+    });
+    expect(payload.aqhi.healthRisk).toBe("Very High");
+    expect(result.factors).toContainEqual(
+      expect.objectContaining({ id: "aqhi" }),
+    );
+  });
+
   it("does not produce an overly positive result when warning API fails", async () => {
     const payload = await buildOutlookPayload("hong-kong", {
       fetcher: fixtureFetcher({ [API_ENDPOINTS.warnings]: unavailable }),

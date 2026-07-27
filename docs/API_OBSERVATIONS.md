@@ -75,7 +75,7 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 - 每項實際只有 `station:string`、`aqhi:integer number`、`health_risk:string`、`publish_date:string`。
 - 本次 AQHI 為 2–3，風險均為 `Low`。
 - 官方 data dictionary 把 `aqhi` 定義為 string 並容許 `1`–`10`、`10+`；runtime parser 必須同時接受實測 number、numeric string 與 `10+`。
-- `health_risk` 合法值：`Low`、`Moderate`、`High`、`Very High`、`Serious`。
+- `health_risk` 的官方語義級別為 `Low`、`Moderate`、`High`、`Very High`、`Serious`；2026-07-27 重驗官方端點時取得的回應樣本（`publish_date` 為 2026-07-25）在 AQHI 8–9 實際使用 `Very high`。Parser 因此只對這組有限級別作不分大小寫比對，並正規化成一致的 title case；未知字眼仍會排除該列。
 - `publish_date=2026-07-14T19:30:00`，沒有 offset；必須明確按 HKT `+08:00` 解析。
 - 不可要求恆定 18 項，個別站點可能缺失。
 
@@ -88,4 +88,3 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 - 保留 raw timestamp，另記 `retrievedAt`。
 - 使用分項觀測時間判斷 weather freshness；無法解析、過時或明顯未來值不計分。
 - Fixtures 會保留本次實測的夜間 UV 空字串、雨量 `min` 缺失、AQHI number、警告動態鍵與預報空白 optionals；另外建立可控的 daytime UV、severe warning、stale、missing、malformed 測試資料。
-

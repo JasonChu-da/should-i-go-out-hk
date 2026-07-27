@@ -41,11 +41,22 @@ export interface AqhiStationReading {
 
 export type AqhiResponse = AqhiStationReading[];
 
-function isAqhiHealthRisk(value: unknown): value is AqhiHealthRisk {
-  return (
-    typeof value === "string" &&
-    (AQHI_HEALTH_RISKS as readonly string[]).includes(value)
-  );
+const AQHI_HEALTH_RISK_BY_LOWERCASE: Readonly<
+  Record<string, AqhiHealthRisk>
+> = {
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+  "very high": "Very High",
+  serious: "Serious",
+};
+
+function parseAqhiHealthRisk(value: unknown): AqhiHealthRisk | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return AQHI_HEALTH_RISK_BY_LOWERCASE[value.toLowerCase()];
 }
 
 function isAqhiValue(value: unknown): value is AqhiValue {
@@ -70,6 +81,7 @@ function parseAqhiItem(
   }
 
   let valid = true;
+  const healthRisk = parseAqhiHealthRisk(value.health_risk);
   if (typeof value.station !== "string") {
     issue(issues, `${path}.station`, "預期為字串");
     valid = false;
@@ -78,7 +90,7 @@ function parseAqhiItem(
     issue(issues, `${path}.aqhi`, "預期為 1 至 10、數字字串或 10+");
     valid = false;
   }
-  if (!isAqhiHealthRisk(value.health_risk)) {
+  if (healthRisk === undefined) {
     issue(issues, `${path}.health_risk`, "不是官方 AQHI 健康風險級別");
     valid = false;
   }
@@ -87,7 +99,7 @@ function parseAqhiItem(
     valid = false;
   }
 
-  if (!valid) {
+  if (!valid || healthRisk === undefined) {
     issue(issues, path, "AQHI 列格式錯誤，已排除");
     return undefined;
   }
@@ -95,7 +107,7 @@ function parseAqhiItem(
   return {
     station: value.station as string,
     aqhi: value.aqhi as AqhiValue,
-    health_risk: value.health_risk as AqhiHealthRisk,
+    health_risk: healthRisk,
     publish_date: value.publish_date as string,
   };
 }

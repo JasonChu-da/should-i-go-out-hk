@@ -138,3 +138,9 @@ Normalization 額外把 `iconUpdateTime` 保存成 `conditionIcons` metric，沿
 使用者關閉動態偏好時，所有非必要 CSS animation／transition 及 Canvas loop 一併停止，而不只停止天氣背景；14 秒後顯示的整頁重載提示屬功能性錯誤出口，保留零時長的延遲揭示。`prefers-reduced-motion` 仍具最高優先權，即使手動偏好為開啟亦只顯示靜態內容。
 
 理由：把品牌與安全語意分開可避免「全站都是安全綠」的混亂；固定、低對比的天空層令普通天氣有生命力，同時維持 deterministic scene、文字可讀性、低主線程成本及無 layout shift。
+
+## D-021：AQHI 健康風險級別作有限的大小寫正規化
+
+`health_risk` 只接受 `Low`、`Moderate`、`High`、`Very High`、`Serious` 五個官方語義級別，但比對時不區分英文字母大小寫，輸出則正規化為一致的 title case。AQHI 數值、站點與發布時間仍按原有嚴格規則驗證，不接受模糊或相近字眼。
+
+理由：2026-07-27 重驗官方端點時，實際回應樣本在 AQHI 8–9 使用 `Very high`，與既有文件及較低風險值的大小寫風格不一致。若整列拒絕，會剛好漏掉需要扣分的高污染觀測；有限集合正規化可容忍上游大小寫差異而不放寬風險語義。

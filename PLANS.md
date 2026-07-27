@@ -149,3 +149,14 @@
 - [x] 複核鍵盤原生控制、focus、螢幕閱讀器名稱、heading／main 語意、文字對比及 console；沒有未命名控制、正 tabindex 或 console error／warning
 - [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；16 files／287 tests、production build 及 TypeScript 全部通過
 - [x] 沒有建立 commit、推送、部署或上傳 GitHub
+
+## 2026-07-27：Production-readiness audit
+
+- [x] 重新閱讀產品規格、API 來源、驗收準則、實作計劃及技術決策
+- [x] 檢查功能、TypeScript、API 邊界、錯誤處理、效能、安全、無障礙、響應式、測試、重複／未使用程式碼與 README
+- [x] 先執行未修改基準的 `lint`、`typecheck`、`test` 及 production `build`
+- [x] 以真實請求重驗 HKO 三個端點、AQHI 端點及官方警告代碼文件
+- [x] 實測 production UI 的 320／360px、桌面、水平 overflow、點按尺寸、語意地標及 console
+- [x] 修正 `Very high` 大小寫差異令高 AQHI 站點被錯誤排除，並加入 parser 與聚合評分回歸測試
+- [x] 修正批次後執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`
+- [x] 沒有建立 Git commit

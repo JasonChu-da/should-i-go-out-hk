@@ -292,6 +292,29 @@ describe("parseAqhi", () => {
     expect(result.value.map(({ aqhi }) => aqhi)).toEqual(["1", "10+"]);
   });
 
+  it("接受官方實測的 Very high 大小寫並正規化", () => {
+    const result = expectSuccess(
+      parseAqhi([
+        {
+          station: "Sha Tin",
+          aqhi: 9,
+          health_risk: "Very high",
+          publish_date: "2026-07-14T19:30:00",
+        },
+      ]),
+    );
+
+    expect(result.issues).toEqual([]);
+    expect(result.value).toEqual([
+      {
+        station: "Sha Tin",
+        aqhi: 9,
+        health_risk: "Very High",
+        publish_date: "2026-07-14T19:30:00",
+      },
+    ]);
+  });
+
   it("單列錯誤只排除該列，未知欄位則容許", () => {
     const result = expectSuccess(parseAqhi(aqhiMalformedItems));
 
@@ -334,7 +357,7 @@ describe("parseAqhi", () => {
     );
   });
 
-  it("health_risk 使用精確官方 enum", () => {
+  it("health_risk 只接受官方級別而非相近字眼", () => {
     const result = expectSuccess(
       parseAqhi([
         {

@@ -170,3 +170,13 @@
 - [x] 覆蓋正常結果、地區／模式、定位成功／拒絕、錯誤重試、鍵盤／焦點、reduced motion、360px overflow 及 console
 - [x] 分別完成 coverage 與 E2E 驗證，再執行全部最終品質閘門
 - [x] 不改變產品功能、評分規則或視覺設計；不建立 Git commit
+
+## 2026-07-27：GitHub Actions CI
+
+- [x] 建立 push／pull request 觸發、最小唯讀權限及合理 timeout 的 CI workflow
+- [x] 使用專案 Node.js 需求、npm cache、`npm ci` 及 Playwright Chromium system dependencies
+- [x] 執行 lint、typecheck、完整 Vitest coverage suite、production build 及 mock E2E
+- [x] 避免重複執行同一套 Vitest 測試
+- [x] 保存 coverage artifact，並在 Playwright 失敗時保存 report、trace、截圖及 test results
+- [x] 完成 workflow YAML／結構靜態檢查及全部本機品質閘門
+- [x] 核對 staged diff 並建立 CI commit

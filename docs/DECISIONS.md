@@ -156,3 +156,11 @@ Vitest coverage 明確包含 `lib/**/*.{ts,tsx}` 與 `app/api/**/*.ts`，並排�
 Playwright 使用 Chromium、固定 `127.0.0.1:3100` 開發伺服器、單 worker、固定時區／語系及 `page.route("**/api/outlook?*")`。測試 fixture 直接符合 `OutlookPayload` 型別，按 query location 回傳不同地區結果；定位成功使用瀏覽器 geolocation permission，拒絕則使用無權限 context。每個案例統一收集 console error 與 page error，失敗時保存 trace、截圖及 HTML report。
 
 理由：E2E 的目的是真實驗證 React hydration、fetch、定位、模式／地區切換、焦點、reduced motion 與 responsive 行為，而不是再次測政府服務可用性。完全攔截內部 route 可避免 live API、時間及網絡波動，單 worker 則避免共用 Next.js 開發伺服器在首次編譯時互相干擾。
+
+## D-024：CI 單一 job 順序執行品質閘門
+
+GitHub Actions 在 `push` 與 `pull_request` 上以 Ubuntu、Node.js 24.x、npm cache 及最小 `contents: read` 權限執行。Workflow 使用目前受維護的 `actions/checkout@v6`、`actions/setup-node@v6` 與 `actions/upload-artifact@v7`。單一 30 分鐘 job 依序安裝 lockfile dependencies、Playwright Chromium 與 system dependencies，再執行 lint、typecheck、Vitest coverage、production build 及 Playwright E2E。Coverage 每次保存七日；Playwright 失敗時保存 HTML report、trace、截圖及 test results。
+
+CI 不另行執行 `npm test`，因 `npm run test:coverage` 已用相同 Vitest 設定完整執行所有單元／元件測試。E2E 保留既有 `/api/outlook` route interception，不連接政府 API；workflow 不需要 secrets，也不觸碰 Vercel 設定。
+
+理由：單一 job 避免多次 `npm ci` 與 Chromium 安裝，並確保 E2E 只在較便宜的靜態、型別、單元及 build 閘門通過後執行。Node.js 24.x 是目前 LTS，符合 `package.json` 所列 `>=20.9.0`，亦與本機驗證環境及 `@types/node` 24 對齊；不採用已於 2026-03-24 EOL 的 Node.js 20。

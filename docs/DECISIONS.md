@@ -144,3 +144,15 @@ Normalization 額外把 `iconUpdateTime` 保存成 `conditionIcons` metric，沿
 `health_risk` 只接受 `Low`、`Moderate`、`High`、`Very High`、`Serious` 五個官方語義級別，但比對時不區分英文字母大小寫，輸出則正規化為一致的 title case。AQHI 數值、站點與發布時間仍按原有嚴格規則驗證，不接受模糊或相近字眼。
 
 理由：2026-07-27 重驗官方端點時，實際回應樣本在 AQHI 8–9 使用 `Very high`，與既有文件及較低風險值的大小寫風格不一致。若整列拒絕，會剛好漏掉需要扣分的高污染觀測；有限集合正規化可容忍上游大小寫差異而不放寬風險語義。
+
+## D-022：Coverage 門檻只量測核心業務與 API 邊界
+
+Vitest coverage 明確包含 `lib/**/*.{ts,tsx}` 與 `app/api/**/*.ts`，並排除測試、E2E、generated／build output、設定檔及純型別定義。初始全域最低門檻為 statements 88%、branches 80%、functions 90%、lines 90%；HTML、文字與 JSON summary 報告一併產生。
+
+理由：核心 parser、aggregate、normalization、location、validation 及 scoring 的風險與 React／Canvas 呈現層不同。把兩者混成單一數字會令低風險動畫細節掩蓋真正的資料安全分支；只量測已 import 的檔案則會虛高。明確 include 會把未被測試載入的核心檔案以 0% 計算，門檻亦保留合理提升空間。
+
+## D-023：Playwright 以 route interception 驗證完整瀏覽器流程
+
+Playwright 使用 Chromium、固定 `127.0.0.1:3100` 開發伺服器、單 worker、固定時區／語系及 `page.route("**/api/outlook?*")`。測試 fixture 直接符合 `OutlookPayload` 型別，按 query location 回傳不同地區結果；定位成功使用瀏覽器 geolocation permission，拒絕則使用無權限 context。每個案例統一收集 console error 與 page error，失敗時保存 trace、截圖及 HTML report。
+
+理由：E2E 的目的是真實驗證 React hydration、fetch、定位、模式／地區切換、焦點、reduced motion 與 responsive 行為，而不是再次測政府服務可用性。完全攔截內部 route 可避免 live API、時間及網絡波動，單 worker 則避免共用 Next.js 開發伺服器在首次編譯時互相干擾。

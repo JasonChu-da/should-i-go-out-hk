@@ -160,3 +160,13 @@
 - [x] 修正 `Very high` 大小寫差異令高 AQHI 站點被錯誤排除，並加入 parser 與聚合評分回歸測試
 - [x] 修正批次後執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`
 - [x] 沒有建立 Git commit
+
+## 2026-07-27：第一階段修正—Coverage 與 Playwright E2E
+
+- [x] 檢查現有 Vitest、Next.js、UI 測試、定位與瀏覽器載入架構
+- [x] 安裝及設定 `@vitest/coverage-v8`，加入真實核心程式碼 include／exclude 與最低門檻
+- [x] 量測 coverage 缺口，只為高風險 aggregate failure isolation 補充有價值的測試
+- [x] 安裝及設定 Playwright，使用本機 web server 與 `/api/outlook` route interception
+- [x] 覆蓋正常結果、地區／模式、定位成功／拒絕、錯誤重試、鍵盤／焦點、reduced motion、360px overflow 及 console
+- [x] 分別完成 coverage 與 E2E 驗證，再執行全部最終品質閘門
+- [x] 不改變產品功能、評分規則或視覺設計；不建立 Git commit

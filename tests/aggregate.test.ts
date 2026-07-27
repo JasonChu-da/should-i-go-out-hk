@@ -125,13 +125,28 @@ describe("buildOutlookPayload failure handling", () => {
     expect(payload.weather.temperatureC.value).toBeNull();
   });
 
-  it("isolates a malformed root response as one unavailable source", async () => {
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: fixtureFetcher({ [API_ENDPOINTS.weather]: success([]) }),
-      now: () => NOW,
-    });
-    expect(payload.status).toBe("partial");
-    expect(payload.weather.source.status).toBe("unavailable");
-    expect(payload.forecast.source.status).toBe("ok");
-  });
+  it.each([
+    [API_ENDPOINTS.weather, [], "weather"],
+    [API_ENDPOINTS.warnings, [], "warnings"],
+    [API_ENDPOINTS.forecast, [], "forecast"],
+    [API_ENDPOINTS.aqhi, {}, "aqhi"],
+  ] as const)(
+    "isolates a malformed %s root as one unavailable source",
+    async (endpoint, malformedRoot, sourceId) => {
+      const payload = await buildOutlookPayload("hong-kong", {
+        fetcher: fixtureFetcher({ [endpoint]: success(malformedRoot) }),
+        now: () => NOW,
+      });
+
+      expect(payload.status).toBe("partial");
+      expect(payload.sources.find((source) => source.id === sourceId)?.status).toBe(
+        "unavailable",
+      );
+      expect(
+        payload.sources
+          .filter((source) => source.id !== sourceId)
+          .every((source) => source.status === "ok"),
+      ).toBe(true);
+    },
+  );
 });

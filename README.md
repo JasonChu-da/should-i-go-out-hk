@@ -81,11 +81,18 @@ npm run dev
 npm run lint
 npm run typecheck
 npm test
+npm run test:coverage
+npx playwright install chromium
+npm run test:e2e
 npm run build
 npm run start
 ```
 
-`npm test` 全部使用本地 fixture，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
+`npm run test:coverage` 會量測核心業務程式碼並在 `coverage/` 產生 HTML 與 JSON summary；最低門檻定義於 `vitest.config.ts`。Playwright 的 Chromium binary 每個開發環境只需安裝一次，`npm run test:e2e` 會自行在 `http://127.0.0.1:3100` 啟動及關閉 Next.js 開發伺服器。
+
+Vitest 與 Playwright 全部使用本地 fixture／route interception，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
+
+正常本機環境直接執行 `npm run test:e2e` 即可，由 Playwright 管理測試 server。若 CI／sandbox 已另行管理 server，可把其 origin 傳入 `PLAYWRIGHT_BASE_URL`，Playwright 便不會重複啟動 server。
 
 ## Vercel Hobby 免費部署
 

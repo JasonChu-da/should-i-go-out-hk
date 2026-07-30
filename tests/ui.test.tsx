@@ -1,5 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { buildOutlookFixture } from "@/e2e/fixtures/outlook";
+import { DataCards } from "@/components/DataCards";
 import OutlookApp from "@/components/OutlookApp";
 import {
   DistrictPicker,
@@ -26,7 +28,13 @@ const result: ScoringResult = {
   isLimited: true,
 };
 
-const sources: SourceMeta[] = (["weather", "warnings", "forecast", "aqhi"] as const).map((id) => ({
+const sources: SourceMeta[] = ([
+  "weather",
+  "warnings",
+  "forecast",
+  "aqhi",
+  "rainfallNowcast",
+] as const).map((id) => ({
   id,
   label: id,
   url: "https://example.com",
@@ -92,7 +100,7 @@ describe("mobile UI semantics", () => {
 
   it("announces a mode result and exposes a focusable verdict heading", () => {
     const html = renderToStaticMarkup(
-      <ResultHero result={result} mode="general" dataLimited />,
+      <ResultHero result={result} mode="general" />,
     );
 
     expect(html).toContain('aria-live="polite"');
@@ -120,10 +128,30 @@ describe("mobile UI semantics", () => {
   it("summarizes sources before exposing per-source timestamps", () => {
     const html = renderToStaticMarkup(<SourceDetails sources={sources} />);
 
-    expect(html).toContain("4 個資料來源可用");
+    expect(html).toContain("5 個資料來源可用");
     expect(html).toContain("最新更新 13:02");
     expect(html).toContain("查看詳情");
-    expect((html.match(/<li/g) ?? [])).toHaveLength(4);
+    expect((html.match(/<li/g) ?? [])).toHaveLength(5);
+  });
+
+  it("adds future rainfall inside the existing rain card with coverage and source time", () => {
+    const payload = buildOutlookFixture("wan-chai");
+    const html = renderToStaticMarkup(
+      <DataCards
+        weather={payload.weather}
+        aqhi={payload.aqhi}
+        rainfallNowcast={payload.rainfallNowcast}
+        location={payload.location}
+        generatedAt={payload.generatedAt}
+      />,
+    );
+
+    expect((html.match(/class="data-card/g) ?? [])).toHaveLength(4);
+    expect(html).toContain("現在／過去一小時");
+    expect(html).toContain("未來約 1 小時 55 分鐘未見明顯降雨訊號");
+    expect(html).toContain("香港天文台兩小時降雨臨近預報");
+    expect(html).toContain("資料時間");
+    expect(html).toContain("13:55");
   });
 
   it("only exposes the star layer for a verified clear night", () => {

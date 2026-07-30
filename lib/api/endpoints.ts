@@ -7,6 +7,12 @@ export const HKO_WARNING_SUMMARY_ENDPOINT =
 export const HKO_LOCAL_FORECAST_ENDPOINT =
   "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc";
 
+export const HKO_RAINFALL_NOWCAST_ENDPOINT =
+  "https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv";
+
+export const HKO_RAINFALL_NOWCAST_SOURCE_PAGE =
+  "https://data.gov.hk/tc-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong";
+
 export const AQHI_CURRENT_ENDPOINT =
   "https://dashboard.data.gov.hk/api/aqhi-individual?format=json";
 
@@ -15,6 +21,7 @@ export const API_ENDPOINTS = {
   warnings: HKO_WARNING_SUMMARY_ENDPOINT,
   forecast: HKO_LOCAL_FORECAST_ENDPOINT,
   aqhi: AQHI_CURRENT_ENDPOINT,
+  rainfallNowcast: HKO_RAINFALL_NOWCAST_ENDPOINT,
 } as const;
 
 export type ApiEndpointName = keyof typeof API_ENDPOINTS;
@@ -25,6 +32,7 @@ export const API_CACHE_TTL_MS = {
   weather: 5 * 60_000,
   forecast: 10 * 60_000,
   aqhi: 15 * 60_000,
+  rainfallNowcast: 10 * 60_000,
 } as const satisfies Record<ApiEndpointName, number>;
 
 /**

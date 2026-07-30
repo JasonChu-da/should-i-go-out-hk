@@ -21,6 +21,35 @@ export const RAINFALL_THRESHOLDS: readonly NumericThreshold[] = [
   { min: Number.MIN_VALUE, penalties: modeValues(1, 2, 7) },
 ];
 
+export interface NowcastRainfallThreshold {
+  min: number;
+  withinOneHour: ModeValues;
+  later: ModeValues;
+}
+
+/**
+ * Site decision rules, not official HKO warning categories. Only the highest
+ * applicable period is used, so four half-hour periods never stack penalties.
+ */
+export const NOWCAST_RAINFALL_THRESHOLDS: readonly NowcastRainfallThreshold[] =
+  [
+    {
+      min: 5,
+      withinOneHour: modeValues(3, 5, 9),
+      later: modeValues(2, 3, 7),
+    },
+    {
+      min: 2.5,
+      withinOneHour: modeValues(2, 3, 8),
+      later: modeValues(1, 2, 6),
+    },
+    {
+      min: 0.5,
+      withinOneHour: modeValues(1, 2, 7),
+      later: modeValues(0, 1, 5),
+    },
+  ];
+
 export const TEMPERATURE_THRESHOLDS: readonly NumericThreshold[] = [
   { min: 35, penalties: modeValues(5, 8, 0) },
   { min: 33, penalties: modeValues(3, 6, 0) },
@@ -138,6 +167,22 @@ export function getPenalty(
   mode: ActivityMode,
 ): number {
   return thresholds.find((threshold) => value >= threshold.min)?.penalties[mode] ?? 0;
+}
+
+export function getNowcastRainfallPenalty(
+  rainfallMm: number,
+  withinOneHour: boolean,
+  mode: ActivityMode,
+): number {
+  const threshold =
+    rainfallMm > 5
+      ? NOWCAST_RAINFALL_THRESHOLDS[0]
+      : NOWCAST_RAINFALL_THRESHOLDS.slice(1).find(
+          (candidate) => rainfallMm >= candidate.min,
+        );
+  return threshold
+    ? (withinOneHour ? threshold.withinOneHour : threshold.later)[mode]
+    : 0;
 }
 
 export function getForecastRainLevel(text: string): "heavy" | "showers" | null {

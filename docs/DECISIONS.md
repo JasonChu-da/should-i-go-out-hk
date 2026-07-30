@@ -1,10 +1,10 @@
 # 技術決策紀錄
 
-更新日期：2026-07-16
+更新日期：2026-07-30
 
 ## D-001：使用單一聚合 server route
 
-採用 `/api/outlook?location=<canonical-id>`，由伺服器並行擷取及正規化四個官方來源。瀏覽器不直接依賴政府 schema，只接收穩定的內部資料格式。
+採用 `/api/outlook?location=<canonical-id>`，由伺服器並行擷取及正規化五個官方來源。瀏覽器不直接依賴政府 schema，只接收穩定的內部資料格式；大型降雨 CSV 亦只回傳所選位置的四段精簡結果。
 
 理由：可隔離個別 API 失敗、集中 timeout／cache／validation／freshness，亦減少手機端請求次數。
 
@@ -22,7 +22,7 @@
 
 ## D-004：自管短期 server memory cache
 
-API client 使用模組內 TTL cache，保存已驗證前的 JSON、實際 `retrievedAt` 與到期時間；upstream fetch 設 `cache: no-store`。預定 TTL：警告 60 秒、即時天氣 5 分鐘、預報 10 分鐘、AQHI 15 分鐘。
+API client 使用模組內 TTL cache，保存已驗證前的 JSON、實際 `retrievedAt` 與到期時間；upstream fetch 設 `cache: no-store`。TTL：警告 60 秒、即時天氣 5 分鐘、預報 10 分鐘、AQHI 15 分鐘。大型降雨 CSV 使用獨立串流 client，成功解析後只 cache 十八區 72 個值及四個香港整體衍生值 10 分鐘，不保存原始 CSV。
 
 理由：HKO 實測沒有 cache validators；自管 cache 能保留真實擷取時間並降低重複請求。Serverless instance 重啟會失去 cache，屬可接受的 MVP 限制。
 
@@ -40,6 +40,7 @@ API client 使用模組內 TTL cache，保存已驗證前的 JSON、實際 `retr
 
 - 氣溫使用「香港天文台」站。
 - 雨量使用十八區有效資料的最高值，標示為「十八區最高」。
+- 未來降雨逐時段使用十八區代表格點最高值，文案限定為「香港部分地區」或「十八區代表格點」。
 - AQHI 使用所有 fresh 一般監測站的最高值，標示為「全港一般站最高」。
 - 不把三個路邊 AQHI 站混入一般使用者結果。
 
@@ -53,7 +54,7 @@ API client 使用模組內 TTL cache，保存已驗證前的 JSON、實際 `retr
 
 ## D-008：missing 與 stale 不扣虛構分，但會限制信心
 
-只有 fresh、validated observations 可產生環境扣分。stale／missing 不會以舊值或零值產生環境扣分；只要所選模式有相關資料缺失、異常或過時，信心上限為 7，必定落在「可以出門，但需要準備」。警告未確認亦有相同上限。若所選模式完全沒有 fresh 相關觀測或生效警告，則回傳 `score: null`，而不是從 10 分開始。四個來源全失敗時不顯示分數。
+只有 fresh、validated observations 可產生環境扣分。stale／missing 不會以舊值或零值產生環境扣分；只要所選模式的核心相關資料缺失、異常或過時，信心上限為 7，必定落在「可以出門，但需要準備」。警告未確認亦有相同上限。若所選模式完全沒有 fresh 相關觀測或生效警告，則回傳 `score: null`，而不是從 10 分開始。四個核心來源全失敗時不顯示分數，即使附加 nowcast 成功亦不例外。Nowcast 單獨失敗不限制現有分數，只以獨立 banner 說明。
 
 理由：同時滿足「過時資料不影響分數」與「缺失資料不可當作安全」。
 
@@ -77,7 +78,7 @@ API client 使用模組內 TTL cache，保存已驗證前的 JSON、實際 `retr
 
 ## D-012：可解釋的級距扣分，而非加權平均
 
-每個 fresh 量度只命中一個集中定義的級距，從 10 分扣減後 clamp 至 0–10，再套警告 cap。雨量、溫度、濕度、UV、AQHI、熱濕協同及有限預報詞表各自產生一條可追蹤原因。一般／運動／晾衫採不同 penalty，但共用同一 pure function。
+每個 fresh 量度只命中一個集中定義的級距，從 10 分扣減後 clamp 至 0–10，再套警告 cap。過去一小時雨量、結構化 nowcast 及晾衫的有限預報詞表先各自產生候選，再只選最高 penalty 成為單一 `rain-risk`；其他來源只作輔助證據，不重複扣分。溫度、濕度、UV、AQHI 及熱濕協同各自產生可追蹤原因。一般／運動／晾衫採不同 penalty，但共用同一 pure function。
 
 理由：級距規則能逐項向使用者說明，也便於測試所有邊界；比不透明的加權平均更符合「清楚解釋扣分原因」。
 
@@ -123,7 +124,7 @@ AQHI 以英文 station id 做官方資料配對，但 UI 只顯示繁體中文�
 
 新增 pure `deriveWeatherScene(weatherData)`，集中把 HKO `rhrread.icon`、所選地區過去一小時雨量、`warnsum` 及 payload `generatedAt` 映射為 scene、日夜、雨勢、嚴重度、動畫開關及可解釋原因。結構化嚴重警告優先於一般圖示；雨量以 `<2.5`、`2.5–<10`、`≥10 mm` 對應 light、medium、heavy。第一版固定以香港時間 07:00–17:59 為日間，其餘為夜間；只影響色調，不進入評分。
 
-Normalization 額外把 `iconUpdateTime` 保存成 `conditionIcons` metric，沿用既有 weather 90 分鐘 freshness 門檻。警告快照不可用／不完整、icon 或雨量 missing／malformed／stale 時使用 neutral 靜態背景；不以預報文字、隨機 scene 或其他來源猜測現況。已確認的嚴重警告本身足以覆蓋一般圖示。
+Normalization 額外把 `iconUpdateTime` 保存成 `conditionIcons` metric，沿用既有 weather 90 分鐘 freshness 門檻。警告快照不可用／不完整、icon 或雨量 missing／malformed／stale 時使用 neutral 靜態背景；不以未來降雨、預報文字、隨機 scene 或其他來源猜測現況。已確認的嚴重警告本身足以覆蓋一般圖示。
 
 視覺只使用 CSS gradient、原創 inline SVG 雲層及 Canvas 雨線，不新增圖像或 dependency。Canvas 的隨機值只控制雨線位置，不參與天氣判斷；scene 選擇完全 deterministic。動態偏好使用版本化 localStorage key `weather-scene-motion:v1`，只保存 `on`／`off`，不包含位置、天氣或其他使用資料；reduced-motion 永遠優先停用動態效果。
 
@@ -164,3 +165,29 @@ GitHub Actions 在 `push` 與 `pull_request` 上以 Ubuntu、Node.js 24.x、npm 
 CI 不另行執行 `npm test`，因 `npm run test:coverage` 已用相同 Vitest 設定完整執行所有單元／元件測試。E2E 保留既有 `/api/outlook` route interception，不連接政府 API；workflow 不需要 secrets，也不觸碰 Vercel 設定。
 
 理由：單一 job 避免多次 `npm ci` 與 Chromium 安裝，並確保 E2E 只在較便宜的靜態、型別、單元及 build 閘門通過後執行。Node.js 24.x 是目前 LTS，符合 `package.json` 所列 `>=20.9.0`，亦與本機驗證環境及 `@types/node` 24 對齊；不採用已於 2026-03-24 EOL 的 Node.js 20。
+
+## D-025：降雨臨近預報以來源時間、十八區代表格點及精簡 snapshot 為契約
+
+官方 CSV 的四段原始區間固定為 `updatedAt` 後 0–30、30–60、60–90、90–120 分鐘。每段保存原始 `periodStartAt`／`periodEndAt`；API 回應時只計算尚餘覆蓋及 `isPartiallyElapsed`，不改寫第一段起點，也不按餘下時間比例縮放完整半小時雨量。採用保守政策：進行中第一段仍參與評分，但文案明示雨量屬完整半小時累計預測、部分時段已經過去。`firstRainWindow` 是尚未完結 periods 中第一組雨量不少於 0.5 mm 的連續區間，遇到第一段低於門檻便結束；較後再次出現的雨由 peak 及實際 scoring driver 分開表達。
+
+Server 只收到 canonical location id。解析完整 CSV 後，使用 haversine distance 為十八區靜態中心各選一個最近格點；距離完全相同時依緯度、經度升序決定。每區四段必須來自同一格點。香港整體逐段採十八區代表格點最高值，屬偏保守的產品取捨，不代表全港每個位置。Cache 只保存 72 個地區值及四個全港衍生值；browser 只收到當前位置四段。
+
+CSV header 在移除 BOM 及欄位首尾空白後必須恰好等於官方五欄。時間／座標非法、混合更新時間、缺少四段，或任何所選代表格點的必要 period 缺少、重複、負值／非數字均為致命。座標合法但不屬任何代表格點的非法雨量屬可恢復問題，只記入 issues。Transport 使用 5 MiB、100,000 rows、完整 8 秒 timeout；cache soft TTL 為 10 分鐘，freshness hard expiry 為 24 分鐘。第一版不採 stale-if-error：refresh 失敗即暫停使用 nowcast，避免把舊值誤當最新。
+
+理由：CSV 每 12 分鐘發布，因此使用者看到的實際餘下覆蓋通常少於兩小時。保存來源語義、限制資料邊界及只依賴產品真正使用的代表格點，可避免虛假精確、無關海上壞列拖垮結果、CORS、大 payload 及過期預報風險，同時保持原有私隱邊界。
+
+## D-026：跨來源降雨只選一個 driver，附加來源狀態不等於評分受限
+
+過去一小時觀測、四段 nowcast 及晾衫文字預報分別計算候選 penalty，只選一個 `rain-risk`。排序為：penalty 較高；有明確 `effectiveStartAt` 優先於未知時間；較接近 `generatedAt`；最後依 nowcast、即時觀測、文字預報。進行中 nowcast 與即時觀測以 `generatedAt` 排序，未開始 nowcast 使用實際 `periodStartAt`，文字預報永遠是未知時間。Nowcast 四段不累加；Hero 同時交代首個雨段、真正扣分時段及不同時的最高雨量時段。
+
+Nowcast 的本站 penalty 規則如下；三個數字依次為一般／運動／晾衫，並非天文台官方外出分數：
+
+| 完整半小時預測雨量 | 一小時內開始 | 一小時後開始 |
+| --- | --- | --- |
+| 0.5–<2.5 mm | 1／2／7 | 0／1／5 |
+| 2.5–5 mm | 2／3／8 | 1／2／6 |
+| >5 mm | 3／5／9 | 2／3／7 |
+
+`payload.status` 代表五個來源是否完整；`result.isLimited` 只代表實際評分所需的核心證據是否不足。Nowcast 單獨 failed／stale／malformed 時 payload 是 `partial`，但不加入 `ignoredFactors` 或 score cap，Hero 保持「資料齊備」，另以 banner 說明目前分數仍按已確認的即時觀測及警告計算。只有 nowcast 成功而四個核心來源全失敗時仍是 `error`。
+
+理由：相同雨勢不可因來源重疊而重複扣分；最早雨段、最大雨量與真正 driver 亦不可在文案中互相矛盾。把來源完整性與評分充分性分開，可避免「分數沒有受影響，Hero 卻稱資料有限」的產品錯誤。

@@ -52,6 +52,16 @@ function latestPublishedAt(payload: OutlookPayload): string | null {
   }, null);
 }
 
+function onlyRainfallNowcastIsDegraded(payload: OutlookPayload): boolean {
+  const degraded = payload.sources.filter(
+    (source) => source.status !== "ok" || source.issues.length > 0,
+  );
+  return (
+    degraded.length > 0 &&
+    degraded.every((source) => source.id === "rainfallNowcast")
+  );
+}
+
 export default function OutlookApp() {
   const [locationId, setLocationId] = useState<LocationId>(HONG_KONG_WIDE.id);
   const [locationStatus, setLocationStatus] = useState<LocationUiStatus>("locating");
@@ -151,9 +161,12 @@ export default function OutlookApp() {
   const locationNote =
     payload?.location.note ??
     (locationId === HONG_KONG_WIDE.id
-      ? "非地區化結果；雨量及 AQHI 採用全港有效資料中的保守代表值。"
-      : "按地區雨量及官方代表監測站評估。");
+      ? "非地區化結果；即時雨量及 AQHI 採用全港有效資料中的保守代表值，未來降雨採用十八區代表格點最高值。"
+      : "按地區即時雨量、最近預報格點及官方代表監測站評估。");
   const weatherScene = useMemo(() => deriveWeatherScene(payload), [payload]);
+  const onlyNowcastDegraded =
+    payload?.status === "partial" &&
+    onlyRainfallNowcastIsDegraded(payload);
 
   return (
     <>
@@ -200,8 +213,17 @@ export default function OutlookApp() {
       {!loading && payload && payload.status === "partial" ? (
         <div className="partial-banner" role="status">
           <div>
-            <strong><span aria-hidden="true">!</span> 部分官方資料暫時不可用</strong>
-            <p>只按可確認的觀測判斷風險；資料不足會限制結論信心。</p>
+            <strong>
+              <span aria-hidden="true">!</span>{" "}
+              {onlyNowcastDegraded
+                ? "未能完整取得未來降雨預報"
+                : "部分官方資料暫時不可用"}
+            </strong>
+            <p>
+              {onlyNowcastDegraded
+                ? "目前分數仍按已確認的即時觀測及警告計算。"
+                : "只按可確認的觀測判斷風險；評分所需資料不足時會限制結論信心。"}
+            </p>
           </div>
           <button className="text-button" type="button" onClick={retry}>重試資料</button>
         </div>
@@ -209,12 +231,14 @@ export default function OutlookApp() {
 
       {!loading && payload && payload.status !== "error" && result ? (
         <div className="decision-layout">
-          <ResultHero
-            result={result}
-            mode={mode}
-            dataLimited={payload.status === "partial"}
+          <ResultHero result={result} mode={mode} />
+          <DataCards
+            weather={payload.weather}
+            aqhi={payload.aqhi}
+            rainfallNowcast={payload.rainfallNowcast}
+            location={payload.location}
+            generatedAt={payload.generatedAt}
           />
-          <DataCards weather={payload.weather} aqhi={payload.aqhi} />
         </div>
       ) : null}
 
@@ -232,7 +256,7 @@ export default function OutlookApp() {
       {!loading && payload?.status === "error" ? <SourceDetails sources={payload.sources} /> : null}
 
       <footer className="site-footer">
-        <p><strong>資料限制：</strong>地區雨量是過去一小時紀錄，不是未來兩小時預報；濕度及紫外線亦不一定代表你所在位置。</p>
+        <p><strong>資料限制：</strong>即時地區雨量是過去一小時紀錄；未來降雨是約 2 公里格點的臨時自動預報，可能受地形及快速發展雨區影響。濕度及紫外線亦不一定代表你所在位置。</p>
         <p>本網站只提供一般資訊，不是專業氣象、醫療或緊急安全建議。惡劣天氣時請以香港天文台及政府指示為準。</p>
         <div className="footer-links">
           <a href="https://www.hko.gov.hk/tc/index.html" target="_blank" rel="noreferrer">香港天文台<span className="sr-only">（在新分頁開啟）</span></a>

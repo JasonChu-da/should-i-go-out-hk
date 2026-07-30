@@ -1,6 +1,11 @@
 import {
+  RAINFALL_NOWCAST_SIGNAL_MM,
+  type RainfallNowcastValue,
+} from "@/lib/domain/outlook";
+import {
   AQHI_THRESHOLDS,
   getForecastRainLevel,
+  getNowcastRainfallPenalty,
   getPenalty,
   HUMIDITY_THRESHOLDS,
   RAINFALL_THRESHOLDS,
@@ -36,6 +41,23 @@ const STATUS_LABELS: Record<EvidenceUnavailableStatus, string> = {
   notApplicable: "目前時段不適用。",
 };
 
+type RainRiskSource = "nowcast" | "observation" | "forecast";
+
+interface RainRiskCandidate {
+  source: RainRiskSource;
+  penalty: number;
+  effectiveStartAt: string | null;
+  rainfallMm?: number;
+  nowcastPeriodIndex?: number;
+  forecastLevel?: "heavy" | "showers";
+}
+
+const RAIN_SOURCE_ORDER: Record<RainRiskSource, number> = {
+  nowcast: 0,
+  observation: 1,
+  forecast: 2,
+};
+
 const isFresh = <T>(evidence: Evidence<T>): evidence is Extract<Evidence<T>, { status: "fresh" }> =>
   evidence.status === "fresh";
 
@@ -52,7 +74,132 @@ function createFactor(
 }
 
 function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return Number.isInteger(value)
+    ? String(value)
+    : String(Number(value.toFixed(2)));
+}
+
+function relativeQuarterHour(
+  timestamp: string,
+  generatedAtMs: number,
+): number {
+  return Math.max(
+    0,
+    Math.round((Date.parse(timestamp) - generatedAtMs) / (15 * 60_000)) *
+      15,
+  );
+}
+
+function periodTiming(
+  startAt: string,
+  endAt: string,
+  generatedAtMs: number,
+): string {
+  if (
+    Date.parse(startAt) < generatedAtMs &&
+    generatedAtMs < Date.parse(endAt)
+  ) {
+    return "目前這個半小時預報時段";
+  }
+
+  const startMinutes = relativeQuarterHour(startAt, generatedAtMs);
+  const endMinutes = relativeQuarterHour(endAt, generatedAtMs);
+  return startMinutes === 0
+    ? `未來約 ${endMinutes} 分鐘內`
+    : `約 ${startMinutes}–${endMinutes} 分鐘內`;
+}
+
+function nowcastPlace(input: ScoringInput): string {
+  return input.location.id === "hong-kong"
+    ? "香港部分地區"
+    : input.location.label;
+}
+
+function firstNowcastRainSummary(
+  input: ScoringInput,
+  nowcast: RainfallNowcastValue,
+): string | null {
+  if (!nowcast.firstRainWindow) return null;
+  const first =
+    nowcast.periods[nowcast.firstRainWindow.firstPeriodIndex];
+  const last = nowcast.periods[nowcast.firstRainWindow.lastPeriodIndex];
+  const timing = periodTiming(
+    first.periodStartAt,
+    last.periodEndAt,
+    Date.parse(input.generatedAt),
+  );
+  return first.isPartiallyElapsed
+    ? `${nowcastPlace(input)}目前這個半小時預報時段有降雨訊號`
+    : `${nowcastPlace(input)}${timing}可能有雨`;
+}
+
+function describeNowcastCandidate(
+  input: ScoringInput,
+  mode: ActivityMode,
+  nowcast: RainfallNowcastValue,
+  candidate: RainRiskCandidate,
+): string {
+  const period = nowcast.periods[candidate.nowcastPeriodIndex ?? 0];
+  const generatedAtMs = Date.parse(input.generatedAt);
+  const firstSummary =
+    firstNowcastRainSummary(input, nowcast) ??
+    `${nowcastPlace(input)}有短期降雨訊號`;
+  const timing = periodTiming(
+    period.periodStartAt,
+    period.periodEndAt,
+    generatedAtMs,
+  );
+  const amount = formatNumber(period.rainfallMm);
+  const firstWindow = nowcast.firstRainWindow;
+  const index = candidate.nowcastPeriodIndex ?? 0;
+  const isInFirstWindow =
+    firstWindow !== null &&
+    index >= firstWindow.firstPeriodIndex &&
+    index <= firstWindow.lastPeriodIndex;
+  const driverIsPeak = index === nowcast.peakRainPeriodIndex;
+  let driverDetail = isInFirstWindow && driverIsPeak
+    ? `${timing}最高半小時預測雨量約 ${amount} 毫米`
+    : `主要扣分時段為${timing}，完整半小時預測雨量約 ${amount} 毫米`;
+
+  if (period.isPartiallyElapsed) {
+    driverDetail += "；這是完整半小時的累計預測，部分時段已經過去";
+  }
+
+  const peakIndex = nowcast.peakRainPeriodIndex;
+  if (
+    peakIndex !== null &&
+    peakIndex !== candidate.nowcastPeriodIndex &&
+    nowcast.periods[peakIndex].rainfallMm >= RAINFALL_NOWCAST_SIGNAL_MM
+  ) {
+    const peak = nowcast.periods[peakIndex];
+    driverDetail += `；${periodTiming(
+      peak.periodStartAt,
+      peak.periodEndAt,
+      generatedAtMs,
+    )}最高半小時預測雨量約 ${formatNumber(peak.rainfallMm)} 毫米`;
+  }
+
+  return `${firstSummary}；${driverDetail}，${MODE_LABELS[mode]}扣 ${candidate.penalty} 分。`;
+}
+
+function selectRainRiskCandidate(
+  candidates: RainRiskCandidate[],
+): RainRiskCandidate | undefined {
+  return [...candidates].sort((left, right) => {
+    if (left.penalty !== right.penalty) {
+      return right.penalty - left.penalty;
+    }
+    const leftKnown = left.effectiveStartAt !== null;
+    const rightKnown = right.effectiveStartAt !== null;
+    if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+    if (left.effectiveStartAt && right.effectiveStartAt) {
+      const timeDifference =
+        Date.parse(left.effectiveStartAt) -
+        Date.parse(right.effectiveStartAt);
+      if (timeDifference !== 0) return timeDifference;
+    }
+    return RAIN_SOURCE_ORDER[left.source] - RAIN_SOURCE_ORDER[right.source];
+  })[0];
 }
 
 function deriveWarningFamily(warning: ActiveWarning): string {
@@ -128,32 +275,154 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
   const ignoredFactors: IgnoredFactor[] = [];
   let relevantFreshCount = 0;
 
-  const applyRainfall = (): void => {
+  const applyRainRisk = (): void => {
+    const candidates: RainRiskCandidate[] = [];
+    let freshNowcast: RainfallNowcastValue | null = null;
+
     if (isFresh(input.rainfallMm)) {
       relevantFreshCount += 1;
       const value = input.rainfallMm.value;
-      const penalty = value > 0 ? getPenalty(RAINFALL_THRESHOLDS, value, mode) : 0;
-      if (penalty > 0) {
-        const recommendation =
-          mode === "laundry"
-            ? "過去一小時有雨，改在室內晾衫或延後再晾。"
-            : mode === "exercise"
-              ? "路面可能濕滑，戶外運動宜改期或縮短。"
-              : "帶傘並預留較多交通時間。";
-        factors.push(
-          createFactor(
-            "rainfall",
-            "過去一小時錄得雨量",
-            `錄得 ${formatNumber(value)} 毫米雨量，${MODE_LABELS[mode]}扣 ${penalty} 分。`,
-            penalty,
-            700 + penalty,
-            recommendation,
-          ),
-        );
+      if (value > 0) {
+        candidates.push({
+          source: "observation",
+          penalty: getPenalty(RAINFALL_THRESHOLDS, value, mode),
+          effectiveStartAt: input.generatedAt,
+          rainfallMm: value,
+        });
       }
     } else {
       addIgnored(ignoredFactors, "rainfall", "雨量", input.rainfallMm);
     }
+
+    if (isFresh(input.rainfallNowcast)) {
+      relevantFreshCount += 1;
+      freshNowcast = input.rainfallNowcast.value;
+      const generatedAtMs = Date.parse(input.generatedAt);
+      for (const [index, period] of freshNowcast.periods.entries()) {
+        const endAtMs = Date.parse(period.periodEndAt);
+        if (
+          endAtMs <= generatedAtMs ||
+          period.rainfallMm < RAINFALL_NOWCAST_SIGNAL_MM
+        ) {
+          continue;
+        }
+
+        const startAtMs = Date.parse(period.periodStartAt);
+        const effectiveStartAt =
+          startAtMs <= generatedAtMs
+            ? input.generatedAt
+            : period.periodStartAt;
+        candidates.push({
+          source: "nowcast",
+          penalty: getNowcastRainfallPenalty(
+            period.rainfallMm,
+            Date.parse(effectiveStartAt) - generatedAtMs <= 60 * 60_000,
+            mode,
+          ),
+          effectiveStartAt,
+          rainfallMm: period.rainfallMm,
+          nowcastPeriodIndex: index,
+        });
+      }
+    }
+
+    if (mode === "laundry") {
+      if (isFresh(input.forecastDescription)) {
+        relevantFreshCount += 1;
+        const forecastLevel = getForecastRainLevel(
+          input.forecastDescription.value,
+        );
+        if (forecastLevel) {
+          candidates.push({
+            source: "forecast",
+            penalty: forecastLevel === "heavy" ? 7 : 3,
+            effectiveStartAt: null,
+            forecastLevel,
+          });
+        }
+      } else {
+        addIgnored(
+          ignoredFactors,
+          "forecast",
+          "本港天氣預報",
+          input.forecastDescription,
+        );
+      }
+    }
+
+    const selected = selectRainRiskCandidate(candidates);
+    if (!selected || selected.penalty === 0) return;
+
+    let label: string;
+    let detail: string;
+    let priority: number;
+    if (selected.source === "nowcast" && freshNowcast) {
+      label = "短期降雨風險上升";
+      detail = describeNowcastCandidate(
+        input,
+        mode,
+        freshNowcast,
+        selected,
+      );
+      priority =
+        (Date.parse(selected.effectiveStartAt ?? "") -
+          Date.parse(input.generatedAt) <=
+        60 * 60_000
+          ? 760
+          : 680) + selected.penalty;
+    } else if (selected.source === "observation") {
+      label = "過去一小時錄得雨量";
+      detail = `錄得 ${formatNumber(selected.rainfallMm ?? 0)} 毫米雨量，${MODE_LABELS[mode]}扣 ${selected.penalty} 分。`;
+      const futureSummary =
+        freshNowcast &&
+        firstNowcastRainSummary(input, freshNowcast);
+      if (futureSummary) detail += ` ${futureSummary}。`;
+      priority = 700 + selected.penalty;
+    } else {
+      label =
+        selected.forecastLevel === "heavy"
+          ? "預報雨勢較大"
+          : "預報有驟雨或雷暴";
+      detail = `本港預報明確提及雨勢，晾衫扣 ${selected.penalty} 分。`;
+      const futureSummary =
+        freshNowcast &&
+        firstNowcastRainSummary(input, freshNowcast);
+      if (futureSummary) detail += ` ${futureSummary}。`;
+      priority = 350 + selected.penalty;
+    }
+
+    const supportingObservation = candidates.find(
+      (candidate) => candidate.source === "observation",
+    );
+    if (
+      selected.source !== "observation" &&
+      supportingObservation?.rainfallMm !== undefined
+    ) {
+      detail += ` 過去一小時亦錄得 ${formatNumber(supportingObservation.rainfallMm)} 毫米，只作輔助證據。`;
+    }
+    const supportingForecast = candidates.find(
+      (candidate) => candidate.source === "forecast",
+    );
+    if (selected.source !== "forecast" && supportingForecast) {
+      detail += ` 本港預報亦提及${supportingForecast.forecastLevel === "heavy" ? "較大雨勢" : "驟雨或雷暴"}，只作輔助證據。`;
+    }
+
+    const recommendation =
+      mode === "laundry"
+        ? "有降雨訊號，改在室內晾衫或延後再晾。"
+        : mode === "exercise"
+          ? "帶傘並留意路面濕滑；戶外運動宜改期或縮短。"
+          : "建議帶傘，並在出門前留意短期降雨預報更新。";
+    factors.push(
+      createFactor(
+        "rain-risk",
+        label,
+        detail,
+        selected.penalty,
+        priority,
+        recommendation,
+      ),
+    );
   };
 
   const applyTemperature = (): void => {
@@ -202,7 +471,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
     }
   };
 
-  applyRainfall();
+  applyRainRisk();
 
   if (mode !== "laundry") applyTemperature();
   if (mode === "exercise" || mode === "laundry") applyHumidity();
@@ -266,28 +535,6 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
       }
     } else {
       addIgnored(ignoredFactors, "aqhi", "空氣質素", input.aqhi);
-    }
-  }
-
-  if (mode === "laundry") {
-    if (isFresh(input.forecastDescription)) {
-      relevantFreshCount += 1;
-      const rainLevel = getForecastRainLevel(input.forecastDescription.value);
-      if (rainLevel) {
-        const penalty = rainLevel === "heavy" ? 7 : 3;
-        factors.push(
-          createFactor(
-            "forecast-rain",
-            rainLevel === "heavy" ? "預報雨勢較大" : "預報有驟雨或雷暴",
-            `本港預報明確提及雨勢，晾衫扣 ${penalty} 分。`,
-            penalty,
-            350 + penalty,
-            "預報有雨，改在室內晾衫或延後再晾。",
-          ),
-        );
-      }
-    } else {
-      addIgnored(ignoredFactors, "forecast", "本港天氣預報", input.forecastDescription);
     }
   }
 

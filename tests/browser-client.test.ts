@@ -1,26 +1,10 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ApiFetchResult } from "@/lib/api/client";
-import { API_ENDPOINTS } from "@/lib/api/endpoints";
-import type { OutlookPayload } from "@/lib/domain/outlook";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildOutlookFixture } from "@/e2e/fixtures/outlook";
 import {
   DEFAULT_OUTLOOK_ROUTE_TIMEOUT_MS,
   fetchOutlookRoute,
   type BrowserFetchImplementation,
 } from "@/lib/outlook/browser-client";
-import { buildOutlookPayload } from "@/lib/outlook/aggregate";
-import aqhi from "@/tests/fixtures/aqhi-live-sanitized.json";
-import forecast from "@/tests/fixtures/flw-live-sanitized.json";
-import weather from "@/tests/fixtures/rhrread-night-live-sanitized.json";
-import warnings from "@/tests/fixtures/warnsum-monsoon-live-sanitized.json";
-
-const NOW = new Date("2026-07-14T12:20:00.000Z");
-
-const success = (data: unknown): ApiFetchResult => ({
-  ok: true,
-  data,
-  retrievedAt: NOW.toISOString(),
-  fromCache: false,
-});
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -30,20 +14,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe("fetchOutlookRoute", () => {
-  let payload: OutlookPayload;
-
-  beforeAll(async () => {
-    const responses: Record<string, ApiFetchResult> = {
-      [API_ENDPOINTS.weather]: success(weather),
-      [API_ENDPOINTS.warnings]: success(warnings),
-      [API_ENDPOINTS.forecast]: success(forecast),
-      [API_ENDPOINTS.aqhi]: success(aqhi),
-    };
-    payload = await buildOutlookPayload("hong-kong", {
-      fetcher: async (url) => responses[url] as ApiFetchResult,
-      now: () => NOW,
-    });
-  });
+  const payload = buildOutlookFixture("hong-kong");
 
   afterEach(() => {
     vi.useRealTimers();

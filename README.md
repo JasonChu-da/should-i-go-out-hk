@@ -1,6 +1,6 @@
 # 香港現在適合出門嗎？
 
-手機優先的繁體中文 Next.js MVP，把香港政府的即時天氣、警告、本港預報及空氣質素資料，整理成 0–10 分的可解釋外出建議。
+手機優先的繁體中文 Next.js 網站，把香港政府的即時天氣、兩小時格點降雨臨近預報、警告、本港預報及空氣質素資料，整理成 0–10 分的可解釋外出建議。
 
 本網站提供一般資訊，不是專業氣象、醫療或緊急安全建議。惡劣天氣時應以香港天文台及政府最新指示為準。
 
@@ -9,11 +9,11 @@
 - 一般外出、跑步／踩單車、晾衫三種模式，即時以同一組已驗證資料重新計分。
 - 瀏覽器定位只在記憶體內轉成最近的十八區 id；精確座標不會送往 server 或永久儲存。
 - 拒絕、逾時或不支援定位時，先顯示香港整體結果，再提供十八區一按選擇。
-- 顯示天氣與體感、過去一小時雨量、紫外線、AQHI、生效警告及本港預報。
+- 顯示天氣與體感、過去一小時雨量、未來最多兩小時的降雨訊號、紫外線、AQHI、生效警告及本港預報。
 - 每個來源分別顯示發布／確認時間及本站擷取時間。
 - 支援 loading、部分失敗、完全失敗、重試、過時及 malformed 資料狀態。
 - 嚴重警告覆蓋一般分數；警告未確認或相關資料不足時限制結論信心。
-- 全頁天氣背景只按 fresh 天文台圖示、所選地區雨量、結構化警告及香港時間決定；資料不足或過時時使用 neutral 靜態背景。
+- 全頁天氣背景只按 fresh 天文台圖示、所選地區即時雨量、結構化警告及香港時間決定；未來降雨不會令背景假裝現在正在下雨，資料不足或過時時使用 neutral 靜態背景。
 - 支援 `prefers-reduced-motion` 及「動態背景：開／關」；只把這一項視覺偏好存於 localStorage，不儲存位置或天氣資料。
 
 ## 資料流程與架構
@@ -22,7 +22,7 @@
 瀏覽器位置（只留在記憶體）
   → 十八區 canonical id／香港整體
   → GET /api/outlook?location=...
-  → 四個官方 API 並行擷取（timeout＋短期記憶體 cache）
+  → 五個官方來源並行擷取（timeout＋短期記憶體 cache）
   → runtime parsing
   → normalization＋地區／測站選擇
   → 每個量度獨立 freshness 檢查
@@ -39,7 +39,7 @@
 - `lib/location/`：十八區 mapping、測站選擇、瀏覽器定位降維。
 - `lib/freshness.ts`：所有 freshness 門檻。
 - `lib/scoring/`：集中門檻及 pure deterministic scoring。
-- `lib/outlook/`：四來源聚合、failure isolation、scoring input。
+- `lib/outlook/`：五來源聚合、核心／附加來源狀態、failure isolation、scoring input。
 - `components/`：手機 UI、模式、地區、資料卡及錯誤狀態。
 - `components/weather-scene/`：背景 crossfade、原創 SVG 雲層、Canvas 雨線、readability overlay 及動態控制。
 - `lib/weather-scene/`：pure scene derivation、HKO icon mapping 與 scene themes。
@@ -48,9 +48,11 @@
 ## 官方資料來源
 
 - [香港天文台即時天氣、警告及本港預報 API 文件](https://www.hko.gov.hk/tc/weatherAPI/doc/files/HKO_Open_Data_API_Documentation_tc.pdf)
+- [香港天文台香港網格點降雨臨近預報 dataset](https://data.gov.hk/tc-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong)
+- [香港網格點降雨臨近預報資料字典](https://data.weather.gov.hk/weatherAPI/hko_data/F3/HKO_gridded_rainfall_nowcast_documentation.pdf)
 - [環境保護署 AQHI dataset](https://data.gov.hk/en-data/dataset/hk-dpo-datagovhk2-city-dashboard-aqhi)
 
-初始 freshness 門檻為：即時天氣 90 分鐘、AQHI 3 小時、警告快照 30 分鐘、本港預報 12 小時。過時值可供辨識，但不會作為環境風險值計分；缺失、異常或過時的模式相關資料會限制最高信心分數。
+Freshness 門檻為：即時天氣 90 分鐘、AQHI 3 小時、警告快照 30 分鐘、本港預報 12 小時、降雨臨近預報 24 分鐘。過時值可供辨識，但不會作為環境風險值計分；核心模式資料缺失、異常或過時會限制最高信心分數。降雨臨近預報屬附加資料，單獨失敗不會把現有即時觀測評分標為「資料有限」。
 
 API 實測 schema、可選欄位及時間戳詳見 [`docs/API_OBSERVATIONS.md`](docs/API_OBSERVATIONS.md)，重要取捨詳見 [`docs/DECISIONS.md`](docs/DECISIONS.md)。
 
@@ -72,7 +74,7 @@ npm run dev
 ### 本機疑難排解
 
 - 正常情況下，資料請求會在 12 秒內顯示結果或可重試錯誤；若頁面仍停在最初的載入卡，使用「重新載入整頁」或按 `Ctrl+F5`，並確認開發伺服器沒有編譯／hydration 錯誤。
-- 若四個來源全部顯示無法連線，請確認執行 `npm run dev` 的 Node.js process 可以對官方 HKO 及 AQHI endpoint 發出 HTTPS 請求。由受限 sandbox 啟動的開發伺服器可能無法出站；應在一般 PowerShell／Terminal 從本專案目錄啟動。
+- 若四個核心來源全部顯示無法連線，請確認執行 `npm run dev` 的 Node.js process 可以對官方 HKO 及 AQHI endpoint 發出 HTTPS 請求。由受限 sandbox 啟動的開發伺服器可能無法出站；應在一般 PowerShell／Terminal 從本專案目錄啟動。
 - 可直接開啟 `http://localhost:3000/api/outlook?location=hong-kong` 檢查內部 route。它應回傳 JSON；即使官方來源失敗，也不應永久 pending。
 
 ## 驗證與 production 啟動
@@ -142,8 +144,9 @@ npm run build
 ### Vercel runtime 與快取行為
 
 - `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
-- 四個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
-- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。
+- 五個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。降雨 CSV 的 timeout 覆蓋 response headers、完整 body download 及串流解析。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
+- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 CSV 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存約 2.7 MB 原始 CSV。
+- 降雨 CSV transport 只接受官方合理 Content-Type，實際串流讀取上限為 5 MiB、100,000 筆資料列；超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
 - HTTP、網絡、timeout、Content-Type 或 JSON 解碼失敗不會寫入快取。若上游回傳可解碼但 schema malformed 的 JSON，該原始回應可能保留至短期 TTL 屆滿；runtime validation 仍會把相關來源標為不可用，絕不把 malformed 值納入計分。
 - 記憶體 cache 不會跨 cold start、重新部署或不同 Function instance 共享，因此只能減少部分重複請求，不能視作可靠的持久 cache。這符合 MVP「無資料庫」限制。
 - 新 Vercel 專案預設啟用 Fluid compute；Hobby 的預設 Function duration 足以涵蓋應用本身的 8 秒上游 timeout，毋須額外提高 duration 或購買付費方案。最新上限仍應以 [Vercel Function duration](https://vercel.com/docs/functions/configuring-functions/duration) 為準。
@@ -160,8 +163,10 @@ npm run build
 ## 已知限制
 
 - 十八區定位採近似中心點，不是正式區界 polygon；邊界位置可能選到鄰區，使用者可一按改選。
-- 香港整體雨量採十八區最高有效值，AQHI 採全港一般監測站最高有效值，屬透明、保守的產品聚合規則，不是政府發布的「全港平均」。
-- 雨量是過去一小時紀錄，不代表此刻仍下雨；MVP 不包含未來兩小時網格降雨預報、雷達圖或地圖。
+- 香港整體即時雨量採十八區最高有效值，未來降雨逐段採十八區代表格點最高值，AQHI 採全港一般監測站最高有效值；這些是透明、保守的產品聚合規則，不是政府發布的「全港平均」，預設結果可能較悲觀。
+- 即時雨量是過去一小時紀錄，不代表此刻仍下雨。未來降雨是約 2 公里格點的臨時自動預報；地形、快速發展／減弱或改變方向的雨區，以及格點內差異都可能造成誤差。
+- 四段半小時預報以來源更新時間為起點。頁面會顯示尚餘的實際覆蓋時間；進行中的第一段仍保留完整半小時累計雨量，標示部分時段已過去，不按剩餘時間比例縮放。
+- 地區模式使用地區中心最近的預報格點，不是精確地址或區界平均；香港整體模式使用十八區代表格點，不代表香港每個位置都無雨或有雨。
 - 強風主要透過結構化天氣警告反映；MVP 沒有加入測風站即時風速。
 - 晾衫預報判斷只使用集中、已測試的有限降雨字詞，不會從任意預報文字推斷精確雨量。
 - server cache 是每個 process／serverless instance 的短期記憶體 cache；重新啟動或不同 instance 不共享。

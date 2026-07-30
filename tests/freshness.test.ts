@@ -14,6 +14,7 @@ describe("freshness thresholds", () => {
       aqhi: 3 * 60 * 60 * 1_000,
       warnings: 30 * 60 * 1_000,
       forecast: 12 * 60 * 60 * 1_000,
+      rainfallNowcast: 24 * 60 * 1_000,
       futureSkew: 5 * 60 * 1_000,
     });
   });

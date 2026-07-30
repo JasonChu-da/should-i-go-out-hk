@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import { classifyOverallStatus } from "@/lib/outlook/status";
 import type { SourceMeta } from "@/lib/domain/outlook";
 
-function source(status: SourceMeta["status"], issues: string[] = []): SourceMeta {
+function source(
+  status: SourceMeta["status"],
+  issues: string[] = [],
+  id: SourceMeta["id"] = "weather",
+): SourceMeta {
   return {
-    id: "weather",
+    id,
     label: "測試來源",
     url: "https://example.test",
     status,
@@ -29,5 +33,13 @@ describe("classifyOverallStatus", () => {
     expect(classifyOverallStatus([source("unavailable"), source("stale")])).toBe("error");
     expect(classifyOverallStatus([])).toBe("error");
   });
-});
 
+  it("does not let an additive nowcast source hide failure of all core sources", () => {
+    expect(
+      classifyOverallStatus([
+        source("unavailable"),
+        source("ok", [], "rainfallNowcast"),
+      ]),
+    ).toBe("error");
+  });
+});

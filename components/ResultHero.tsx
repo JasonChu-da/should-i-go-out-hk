@@ -17,11 +17,10 @@ const VERDICT_ICONS: Record<ScoringResult["verdict"], AppIconName> = {
 interface ResultHeroProps {
   result: ScoringResult;
   mode: ActivityMode;
-  dataLimited?: boolean;
 }
 
-export function ResultHero({ result, mode, dataLimited = false }: ResultHeroProps) {
-  const limited = result.isLimited || dataLimited;
+export function ResultHero({ result, mode }: ResultHeroProps) {
+  const limited = result.isLimited;
   const scoreLabel =
     result.score === null
       ? "暫未能評分"

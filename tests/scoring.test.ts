@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RainfallNowcastValue } from "@/lib/domain/outlook";
 import { scoreOutlook } from "@/lib/scoring/score";
 import { WARNING_RULES } from "@/lib/scoring/thresholds";
 import type {
@@ -8,13 +9,85 @@ import type {
 } from "@/lib/scoring/types";
 
 const PUBLISHED_AT = "2026-07-14T12:00:00+08:00";
+const GENERATED_AT = "2026-07-14T04:00:00.000Z";
 const fresh = <T>(value: T): Evidence<T> => ({ status: "fresh", value, publishedAt: PUBLISHED_AT });
 const missing = <T>(): Evidence<T> => ({ status: "missing" });
 const stale = <T>(): Evidence<T> => ({ status: "stale", publishedAt: "2026-07-14T01:00:00+08:00" });
 
+function nowcast(
+  amounts: readonly [number, number, number, number] = [0, 0, 0, 0],
+  updatedAt = "2026-07-14T03:55:00.000Z",
+): Evidence<RainfallNowcastValue> {
+  const updatedAtMs = Date.parse(updatedAt);
+  const generatedAtMs = Date.parse(GENERATED_AT);
+  const periods = amounts.map((rainfallMm, index) => {
+    const start = updatedAtMs + index * 30 * 60_000;
+    const end = start + 30 * 60_000;
+    return {
+      periodStartAt: new Date(start).toISOString(),
+      periodEndAt: new Date(end).toISOString(),
+      rainfallMm,
+      isPartiallyElapsed: start < generatedAtMs && generatedAtMs < end,
+    };
+  }) as unknown as RainfallNowcastValue["periods"];
+  const rainIndexes = periods
+    .map((period, index) => ({ period, index }))
+    .filter(
+      ({ period }) =>
+        Date.parse(period.periodEndAt) > generatedAtMs &&
+        period.rainfallMm >= 0.5,
+    );
+  const firstIndex = rainIndexes[0]?.index;
+  let lastIndex = firstIndex;
+  if (firstIndex !== undefined) {
+    while (
+      lastIndex !== undefined &&
+      lastIndex + 1 < periods.length &&
+      periods[lastIndex + 1].rainfallMm >= 0.5
+    ) {
+      lastIndex += 1;
+    }
+  }
+  let peakRainPeriodIndex: number | null = null;
+  periods.forEach((period, index) => {
+    if (
+      Date.parse(period.periodEndAt) > generatedAtMs &&
+      (peakRainPeriodIndex === null ||
+        period.rainfallMm >
+          periods[peakRainPeriodIndex].rainfallMm)
+    ) {
+      peakRainPeriodIndex = index;
+    }
+  });
+  const coverageEndAt = periods[3].periodEndAt;
+
+  return {
+    status: "fresh",
+    publishedAt: updatedAt,
+    value: {
+      periods,
+      coverageEndAt,
+      remainingCoverageMinutes: Math.ceil(
+        (Date.parse(coverageEndAt) - generatedAtMs) / 60_000,
+      ),
+      firstRainWindow:
+        firstIndex === undefined || lastIndex === undefined
+          ? null
+          : {
+              firstPeriodIndex: firstIndex,
+              lastPeriodIndex: lastIndex,
+            },
+      peakRainPeriodIndex,
+    },
+  };
+}
+
 function normalInput(): ScoringInput {
   return {
+    generatedAt: GENERATED_AT,
+    location: { id: "wan-chai", label: "灣仔" },
     rainfallMm: fresh(0),
+    rainfallNowcast: nowcast(),
     temperatureC: fresh(25),
     humidityPercent: fresh(60),
     uvIndex: fresh(2),
@@ -45,7 +118,7 @@ describe("scoreOutlook", () => {
     input.rainfallMm = fresh(1);
     const result = scoreOutlook(input, mode);
     expect(result.score).toBe(expected);
-    expect(result.factors.filter((factor) => factor.id === "rainfall")).toHaveLength(1);
+    expect(result.factors.filter((factor) => factor.id === "rain-risk")).toHaveLength(1);
   });
 
   it.each([
@@ -154,6 +227,143 @@ describe("scoreOutlook", () => {
     expect(scoreOutlook(negative, "laundry").score).toBe(10);
   });
 
+  it.each([
+    [0.49, "general", 10],
+    [0.5, "general", 9],
+    [0.5, "exercise", 8],
+    [0.5, "laundry", 3],
+    [2.5, "general", 8],
+    [2.5, "exercise", 7],
+    [2.5, "laundry", 2],
+    [5, "general", 8],
+    [5, "exercise", 7],
+    [5, "laundry", 2],
+    [5.01, "general", 7],
+    [5.01, "exercise", 5],
+    [5.01, "laundry", 1],
+  ] as const)(
+    "uses the within-hour nowcast boundary %s mm in %s mode",
+    (rainfallMm, mode, expectedScore) => {
+      const input = normalInput();
+      input.rainfallNowcast = nowcast([rainfallMm, 0, 0, 0]);
+
+      expect(scoreOutlook(input, mode).score).toBe(expectedScore);
+    },
+  );
+
+  it.each([
+    [0.5, "general", 10],
+    [0.5, "exercise", 9],
+    [0.5, "laundry", 5],
+    [2.5, "general", 9],
+    [2.5, "exercise", 8],
+    [2.5, "laundry", 4],
+    [5, "general", 9],
+    [5, "exercise", 8],
+    [5, "laundry", 4],
+    [5.01, "general", 8],
+    [5.01, "exercise", 7],
+    [5.01, "laundry", 3],
+  ] as const)(
+    "uses the later nowcast boundary %s mm in %s mode",
+    (rainfallMm, mode, expectedScore) => {
+      const input = normalInput();
+      input.rainfallNowcast = nowcast([0, 0, 0, rainfallMm]);
+
+      expect(scoreOutlook(input, mode).score).toBe(expectedScore);
+    },
+  );
+
+  it("uses only the highest rain-risk penalty instead of stacking four periods or sources", () => {
+    const input = normalInput();
+    input.rainfallMm = fresh(1);
+    input.rainfallNowcast = nowcast([5.1, 5.1, 5.1, 5.1]);
+    input.forecastDescription = fresh("有驟雨，部分地區雨勢較大。");
+
+    const result = scoreOutlook(input, "laundry");
+
+    expect(result.score).toBe(1);
+    expect(
+      result.factors.filter((factor) => factor.id === "rain-risk"),
+    ).toHaveLength(1);
+    expect(result.factors.find((factor) => factor.id === "rain-risk")).toMatchObject({
+      penalty: 9,
+      label: "短期降雨風險上升",
+    });
+    expect(
+      result.factors.find((factor) => factor.id === "rain-risk")?.detail,
+    ).toContain("過去一小時亦錄得 1 毫米，只作輔助證據");
+    expect(
+      result.factors.find((factor) => factor.id === "rain-risk")?.detail,
+    ).toContain("本港預報亦提及較大雨勢，只作輔助證據");
+  });
+
+  it("describes the first rain window and separately explains a later scoring driver", () => {
+    const input = normalInput();
+    input.rainfallNowcast = nowcast([0.7, 0, 0, 8]);
+
+    const result = scoreOutlook(input, "general");
+    const rainRisk = result.factors.find(
+      (factor) => factor.id === "rain-risk",
+    );
+
+    expect(result.score).toBe(8);
+    expect(rainRisk?.detail).toContain(
+      "灣仔目前這個半小時預報時段有降雨訊號",
+    );
+    expect(rainRisk?.detail).toContain("主要扣分時段為約 90–120 分鐘內");
+    expect(rainRisk?.detail).toContain("8 毫米");
+  });
+
+  it("breaks equal rain penalties by explicit time, proximity, then nowcast source", () => {
+    const input = normalInput();
+    input.rainfallMm = fresh(1);
+    input.rainfallNowcast = nowcast([0.5, 2, 0, 5]);
+    input.forecastDescription = fresh("部分地區雨勢較大。");
+
+    const result = scoreOutlook(input, "laundry");
+    const rainRisk = result.factors.find(
+      (factor) => factor.id === "rain-risk",
+    );
+
+    expect(rainRisk).toMatchObject({
+      penalty: 7,
+      label: "短期降雨風險上升",
+    });
+    expect(rainRisk?.detail).toContain(
+      "完整半小時的累計預測，部分時段已經過去",
+    );
+  });
+
+  it.each(["failed", "stale", "malformed"] as const)(
+    "does not mark the score limited when only additive nowcast is %s",
+    (status) => {
+      const input = normalInput();
+      input.rainfallNowcast = {
+        status,
+        reason: "未能取得未來降雨預報。",
+      };
+
+      const result = scoreOutlook(input, "general");
+
+      expect(result.score).toBe(10);
+      expect(result.isLimited).toBe(false);
+      expect(result.ignoredFactors).not.toContainEqual(
+        expect.objectContaining({ id: "rainfallNowcast" }),
+      );
+    },
+  );
+
+  it("uses Hong Kong-wide wording without implying rain everywhere", () => {
+    const input = normalInput();
+    input.location = { id: "hong-kong", label: "香港整體" };
+    input.rainfallNowcast = nowcast([0.5, 0, 0, 0]);
+
+    expect(scoreOutlook(input, "general").summary).toContain(
+      "香港部分地區",
+    );
+  });
+
   it.each(["WRAINB", "TC8NE", "TC9", "TC10", "WTMW"])(
     "caps severe warning %s at 1",
     (code) => {
@@ -215,7 +425,10 @@ describe("scoreOutlook", () => {
 
   it("returns no score when the selected mode has no fresh relevant factor", () => {
     const input: ScoringInput = {
+      generatedAt: GENERATED_AT,
+      location: { id: "hong-kong", label: "香港整體" },
       rainfallMm: missing(),
+      rainfallNowcast: missing(),
       temperatureC: missing(),
       humidityPercent: missing(),
       uvIndex: missing(),

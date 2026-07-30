@@ -22,6 +22,7 @@ const SOURCE_LABELS: Record<SourceId, string> = {
   warnings: "香港天文台天氣警告",
   forecast: "香港天文台本港天氣預報",
   aqhi: "環境保護署空氣質素健康指數",
+  rainfallNowcast: "香港天文台兩小時降雨臨近預報",
 };
 
 function metric<T>(
@@ -63,6 +64,7 @@ export function buildOutlookFixture(
   const warningSource = source("warnings");
   const forecastSource = source("forecast");
   const aqhiSource = source("aqhi");
+  const rainfallNowcastSource = source("rainfallNowcast");
 
   return {
     status: "ok",
@@ -72,8 +74,8 @@ export function buildOutlookFixture(
       label: locationLabel,
       localized,
       note: localized
-        ? "按地區雨量及官方代表監測站評估。"
-        : "非地區化結果；雨量及 AQHI 採用全港有效資料中的保守代表值。",
+        ? "按地區即時雨量、最近預報格點及官方代表監測站評估。"
+        : "非地區化結果；即時雨量及 AQHI 採用全港有效資料中的保守代表值，未來降雨採用十八區代表格點最高值。",
     },
     weather: {
       conditionIcons: metric("天氣狀況", [50], "香港天文台"),
@@ -111,11 +113,51 @@ export function buildOutlookFixture(
       healthRisk: "Moderate",
       source: aqhiSource,
     },
+    rainfallNowcast: {
+      forecast: metric(
+        "未來降雨預報",
+        {
+          periods: [
+            {
+              periodStartAt: "2026-07-27T05:55:00.000Z",
+              periodEndAt: "2026-07-27T06:25:00.000Z",
+              rainfallMm: 0,
+              isPartiallyElapsed: true,
+            },
+            {
+              periodStartAt: "2026-07-27T06:25:00.000Z",
+              periodEndAt: "2026-07-27T06:55:00.000Z",
+              rainfallMm: 0,
+              isPartiallyElapsed: false,
+            },
+            {
+              periodStartAt: "2026-07-27T06:55:00.000Z",
+              periodEndAt: "2026-07-27T07:25:00.000Z",
+              rainfallMm: 0,
+              isPartiallyElapsed: false,
+            },
+            {
+              periodStartAt: "2026-07-27T07:25:00.000Z",
+              periodEndAt: "2026-07-27T07:55:00.000Z",
+              rainfallMm: 0,
+              isPartiallyElapsed: false,
+            },
+          ],
+          coverageEndAt: "2026-07-27T07:55:00.000Z",
+          remainingCoverageMinutes: 115,
+          firstRainWindow: null,
+          peakRainPeriodIndex: 0,
+        },
+        localized ? locationLabel : "十八區代表格點最高",
+      ),
+      source: rainfallNowcastSource,
+    },
     sources: [
       weatherSource,
       warningSource,
       forecastSource,
       aqhiSource,
+      rainfallNowcastSource,
     ],
   };
 }

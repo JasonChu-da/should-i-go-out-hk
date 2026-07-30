@@ -211,7 +211,7 @@ const DISTRICTS_BY_ID = new Map<string, DistrictRecord>(
 // Broad service envelope only: the MVP deliberately avoids map/polygon data.
 // It prevents clearly overseas coordinates from being mislabeled as a Hong
 // Kong district while leaving border-area users able to choose manually.
-const HONG_KONG_SERVICE_BOUNDS = Object.freeze({
+export const HONG_KONG_SERVICE_BOUNDS = Object.freeze({
   minLatitude: 22.13,
   maxLatitude: 22.57,
   minLongitude: 113.82,

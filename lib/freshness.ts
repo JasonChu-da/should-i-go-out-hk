@@ -10,6 +10,7 @@ export const FRESHNESS_THRESHOLDS_MS = Object.freeze({
   aqhi: 3 * HOUR_MS,
   warnings: 30 * MINUTE_MS,
   forecast: 12 * HOUR_MS,
+  rainfallNowcast: 24 * MINUTE_MS,
   futureSkew: 5 * MINUTE_MS,
 });
 

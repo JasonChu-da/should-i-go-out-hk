@@ -20,8 +20,15 @@ export interface NormalizedMetric<T> {
   message: string;
 }
 
-export type SourceId = "weather" | "warnings" | "forecast" | "aqhi";
+export type SourceId =
+  | "weather"
+  | "warnings"
+  | "forecast"
+  | "aqhi"
+  | "rainfallNowcast";
 export type SourceStatus = "ok" | "stale" | "unavailable";
+
+export const RAINFALL_NOWCAST_SIGNAL_MM = 0.5;
 
 export interface SourceMeta {
   id: SourceId;
@@ -83,6 +90,34 @@ export interface NormalizedAqhi {
   source: SourceMeta;
 }
 
+export interface RainfallNowcastPeriod {
+  periodStartAt: string;
+  periodEndAt: string;
+  rainfallMm: number;
+  isPartiallyElapsed: boolean;
+}
+
+export interface RainfallNowcastValue {
+  periods: readonly [
+    RainfallNowcastPeriod,
+    RainfallNowcastPeriod,
+    RainfallNowcastPeriod,
+    RainfallNowcastPeriod,
+  ];
+  coverageEndAt: string;
+  remainingCoverageMinutes: number;
+  firstRainWindow: {
+    firstPeriodIndex: number;
+    lastPeriodIndex: number;
+  } | null;
+  peakRainPeriodIndex: number | null;
+}
+
+export interface NormalizedRainfallNowcast {
+  forecast: NormalizedMetric<RainfallNowcastValue>;
+  source: SourceMeta;
+}
+
 export interface OutlookLocation {
   id: LocationId;
   label: string;
@@ -100,5 +135,6 @@ export interface OutlookPayload {
   warnings: NormalizedWarnings;
   forecast: NormalizedForecast;
   aqhi: NormalizedAqhi;
+  rainfallNowcast: NormalizedRainfallNowcast;
   sources: SourceMeta[];
 }

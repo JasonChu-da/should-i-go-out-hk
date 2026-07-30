@@ -34,6 +34,8 @@ The MVP is complete only when every required item below passes.
 
 \- \[ ] AQHI data can be retrieved.
 
+\- \[ ] HKO gridded rainfall nowcast CSV can be retrieved through the server route without a browser CORS dependency.
+
 \- \[ ] API responses are runtime validated.
 
 \- \[ ] Missing optional fields do not crash the application.
@@ -47,6 +49,16 @@ The MVP is complete only when every required item below passes.
 \- \[ ] API requests have timeout and error handling.
 
 \- \[ ] Tests do not call live government APIs.
+
+\- \[ ] Nowcast parsing requires the exact official five-column header and four unique, contiguous half-hour periods.
+
+\- \[ ] Nowcast timestamps are interpreted as Hong Kong time and periods remain anchored to source `updatedAt`.
+
+\- \[ ] The server caches only 18 district × 4 periods plus four Hong Kong-wide derived values; a browser response contains only the selected four periods.
+
+\- \[ ] The CSV stream enforces 5 MiB, 100,000-row and complete 8-second timeout limits.
+
+\- \[ ] A nowcast older than 24 minutes is displayed as stale and never enters scoring.
 
 
 
@@ -65,6 +77,10 @@ The MVP is complete only when every required item below passes.
 \- \[ ] No address or long text input is required.
 
 \- \[ ] A Hong Kong-wide fallback is available.
+
+\- \[ ] Precise browser coordinates are still reduced to a canonical district id before any server request.
+
+\- \[ ] Every district uses one deterministic nearest forecast grid point for all four periods.
 
 
 
@@ -94,6 +110,14 @@ The MVP is complete only when every required item below passes.
 
 \- \[ ] Status is not communicated through colour alone.
 
+\- \[ ] The existing rainfall card separates past-hour observation from future rainfall without adding a fifth main card.
+
+\- \[ ] Future copy shows actual remaining coverage, first contiguous rain window, source update time and an approximate—not over-precise—time range.
+
+\- \[ ] Hong Kong-wide copy says “香港部分地區” or “十八區代表格點” and does not imply rain everywhere.
+
+\- \[ ] Future-only rain does not switch the current WeatherScene to a rain scene.
+
 
 
 \## Scoring
@@ -115,6 +139,14 @@ The MVP is complete only when every required item below passes.
 \- \[ ] Laundry mode has unit tests.
 
 \- \[ ] Explanations identify the factors that changed the score.
+
+\- \[ ] Past-hour rainfall, structured nowcast and forecast text form one `rain-risk` factor and never stack rain deductions.
+
+\- \[ ] Equal rain penalties resolve by explicit time, proximity, then nowcast → observation → forecast text.
+
+\- \[ ] A partially elapsed first period is labelled as a full half-hour accumulation and is never prorated.
+
+\- \[ ] Nowcast failure alone does not add an ignored factor, cap the score or force the Hero to “資料有限”.
 
 
 
@@ -147,6 +179,18 @@ The MVP is complete only when every required item below passes.
 \- \[ ] All APIs unavailable
 
 \- \[ ] Geolocation denied
+
+\- \[ ] Valid and malformed rainfall nowcast CSV
+
+\- \[ ] District grid mapping and Hong Kong-wide aggregation
+
+\- \[ ] First contiguous rain window with a later separate rain period
+
+\- \[ ] Partially elapsed period and reduced remaining coverage
+
+\- \[ ] Stale, timeout, oversized and unavailable nowcast fallback
+
+\- \[ ] Cross-source rain-risk penalty and tie-break rules
 
 
 

@@ -142,43 +142,121 @@ https://data.gov.hk/en-data/dataset/hk-dpo-datagovhk2-city-dashboard-aqhi
 
 
 
-\## Phase 2: rainfall nowcast
+\## 香港網格點降雨臨近預報
 
 
 
-The Hong Kong Observatory provides gridded rainfall nowcast data for up to the
-
-next two hours.
+GET:
 
 
 
-Do not implement it in the MVP.
+https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv
 
 
 
-Before implementing it, document:
+官方資料：
 
 
 
-\- file format
+\- Dataset：https://data.gov.hk/tc-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong
 
-\- update frequency
+\- 資料字典：https://data.weather.gov.hk/weatherAPI/hko_data/F3/HKO_gridded_rainfall_nowcast_documentation.pdf
 
-\- grid coordinate system
+\- 天文台產品說明：https://www.hko.gov.hk/en/wxinfo/ts/explain.htm
 
-\- conversion from user latitude/longitude to grid cell
-
-\- missing-data behaviour
-
-\- test fixtures
+\- 官方圖例：https://www.hko.gov.hk/en/wxinfo/awsgis/help_legend.html
 
 
 
-Official dataset page:
+DATA.GOV.HK 列明資料每 12 分鐘更新，提供未來兩小時的四段半小時
+
+累計雨量。CSV 第一行在移除 UTF-8 BOM 及每欄首尾空白後，必須恰好
+
+等於官方五欄英文標題：
 
 
 
-https://data.gov.hk/en-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong
+1\. `Updated Date and Time (in Hong Kong Time)`
+
+2\. `Ending Date and Time (in Hong Kong Time)`
+
+3\. `Latitude (degree)`
+
+4\. `Longitude (degree)`
+
+5\. `Half-hourly Nowcast Accumulated Rainfall (mm)`
+
+
+
+任何缺欄、改名、重排或額外欄位均為致命格式錯誤。兩個時間欄使用
+
+`YYYYMMDDHHMM` 香港時間；每份檔案只接受一個更新時間，必要結束時間
+
+必須分別為更新後 30、60、90、120 分鐘。四段原始區間以來源更新時間
+
+為起點，不可改成 API 回應時間。進行中時段的雨量仍代表整個半小時，
+
+不可按剩餘分鐘比例縮放。
+
+
+
+CSV 以十進位經緯度（degree）識別格點。官方約 2 公里產品及 CSDI
+
+空間版本支援 EPSG:4326；應用以同一經緯度空間做 haversine 最近格點
+
+選擇。精確 browser geolocation 仍只在瀏覽器記憶體內轉成 canonical
+
+十八區 id；server 只按靜態地區中心為每區選一個格點。香港整體逐時段
+
+採十八區代表格點最高值，並清楚標示為網站的保守聚合規則。
+
+
+
+Server 下載完整 CSV 後只 cache 十八區共 72 個半小時值及四個香港整體
+
+衍生值；每次 browser payload 只包含所選地區或香港整體的四段結果。
+
+Cache TTL 為 10 分鐘，freshness hard expiry 為來源更新後 24 分鐘；
+
+第一版沒有 stale-if-error。TTL 後 refresh 失敗會暫停使用 nowcast，
+
+不會把舊 snapshot 當作最新資料。
+
+
+
+Transport 固定限制：
+
+
+
+\- `MAX_RESPONSE_BYTES = 5 * 1024 * 1024`
+
+\- `MAX_DATA_ROWS = 100_000`
+
+\- `REQUEST_TIMEOUT_MS = 8_000`
+
+
+
+Timeout 覆蓋 headers、完整 body download 及串流解析。只接受
+
+`text/csv`、`text/plain`、`application/octet-stream`；Content-Type
+
+缺失、`response.body === null`、超限、逾時或非法 UTF-8 均令此附加
+
+來源 unavailable。Byte limit 以 reader 實際讀取的解壓後 bytes 計算；
+
+超限時同時 cancel reader 及 abort request。
+
+
+
+時間或座標非法、混合更新時間、找不到四段、所選代表格點必要 period
+
+缺少／重複／雨量非法均為致命。座標合法但非任何代表格點的非法雨量、
+
+服務範圍外非法雨量、額外合法時段或未知資料列屬可恢復問題，記入
+
+`SourceMeta.issues`，不令完整代表格點失效。自動測試只用本地、由實際
+
+官方回應抽取及去識別的 fixture，不呼叫 live endpoint。
 
 
 

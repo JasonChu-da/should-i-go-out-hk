@@ -254,3 +254,41 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 | `npm run typecheck` | 通過；route types generated，TypeScript 0 error。 |
 
 本輪沒有建立 commit、推送、部署或上傳 GitHub。
+
+## 2026-07-30：未來兩小時降雨臨近預報
+
+### 官方資料重驗
+
+以香港天文台／DATA.GOV.HK 官方頁面、資料字典及實際 CSV 交叉核對：
+
+- DATA.GOV.HK 列明英文 CSV 每 12 分鐘更新，提供未來兩小時四段半小時累計雨量，不需要 API key。
+- 一頁官方資料字典確認嚴格五欄 header、`YYYYMMDDHHMM` 香港時間、經緯度 degree、半小時累計毫米及 provisional data 說明。
+- 2026-07-30 17:25 HKT 檢查的實際 CSV 約 2.7 MB，共 58,564 筆資料列，即 \(121 \times 121 \times 4\)。該 snapshot 更新於 17:12，四段結束於 17:42、18:12、18:42、19:12。
+- 天文台產品說明確認約 2 公里格點、格內不解析及快速發展／減弱／改變方向雨區可造成誤差；官方圖例確認 `<2.5`、`2.5–5`、`>5 mm` 分界。
+- 保存的 CSV fixture 只抽取實際回應兩個格點的八列，沒有讓自動測試依賴 live API。
+
+### 資料、時間及失效安全
+
+- 串流 transport 實際計算解壓後 bytes，固定 5 MiB、100,000 rows、8 秒完整 deadline；測試涵蓋 headers 永不完成、body 尚未完成、Content-Type 缺失／錯誤、null body、非法 UTF-8、超限、失敗不 cache 及並行 dedupe。
+- Parser 測試涵蓋 BOM／空白、嚴格五欄、混合更新時間、非法日曆／座標、缺少時段、代表格點非法值致命及非代表格點問題可恢復。
+- 四段保留來源 `updatedAt` 的原始 30 分鐘區間。測試確認 17:36 查看 17:12 snapshot 時只剩 96 分鐘覆蓋；進行中第一段不改寫開始時間、不按比例縮放。
+- Nowcast 超過 24 分鐘即 stale；stale、failed、malformed 或 timeout 不進入計分，也不顯示舊值。10 分鐘 cache refresh 失敗後不採 stale-if-error。
+- Server snapshot 只有十八區 72 個值及四個全港衍生值；browser runtime validator 要求單一位置四段、時間遞增／不重疊／每段 30 分鐘、coverage／partial／first window／peak 一致，以及五個來源完整且唯一。
+
+### 評分、UI 及私隱回歸
+
+- 三個降雨來源合併成單一 `rain-risk`；測試涵蓋 0.5、2.5、5、>5 mm 邊界、近／遠時段、三種模式、四段不累加、跨來源 tie-break、首個連續雨段與較後 peak／driver。
+- Nowcast 單獨失敗時 payload 為 `partial`，但不加入 ignored factor 或 score cap；Hero 維持「資料齊備」，banner 明示目前分數仍按已確認即時觀測及警告計算。只有 nowcast 成功而四個核心來源失敗時仍是 `error`。
+- E2E 驗證未來一小時雨訊號會更新 Hero 與既有降雨卡，但不把 WeatherScene 切成雨景；另驗證 nowcast-only failure、地區／模式切換、定位允許／拒絕、重試、鍵盤 focus、reduced motion 及 360px 無水平 overflow。
+- 精確位置的處理沒有改變：browser 只在記憶體把座標轉成 canonical district id，server 及 nowcast route 不接收 latitude／longitude。
+
+### 最終品質閘門
+
+- `npm run lint`：通過。
+- `npm run typecheck`：通過。
+- `npm test`／`npm run test:coverage`：18 個 test files、351 項測試全數通過。
+- Coverage：statements 90.73%、branches 83.07%、functions 94.23%、lines 93.54%，全部高於設定門檻。
+- `npm run build`：Next.js production build 通過；`/api/outlook` 保持 dynamic route。
+- `npm run test:e2e`：Chromium 11 項全數通過。
+
+已知限制：地區仍以近似中心點的最近約 2 公里格點代表，不是區界面積預報；香港整體逐段最高值偏保守；臨時自動預報可能受地形及快速發展雨區影響；10 分鐘 cache 暫未實作 stale-if-error；沒有地圖、雷達動畫、通知或概率預報。

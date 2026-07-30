@@ -1,3 +1,6 @@
+import type { RainfallNowcastValue } from "@/lib/domain/outlook";
+import type { LocationId } from "@/lib/location/districts";
+
 export type ActivityMode = "general" | "exercise" | "laundry";
 
 export const ACTIVITY_MODES: ReadonlyArray<{
@@ -43,7 +46,10 @@ export interface ActiveWarning {
 }
 
 export interface ScoringInput {
+  generatedAt: string;
+  location: { id: LocationId; label: string };
   rainfallMm: Evidence<number>;
+  rainfallNowcast: Evidence<RainfallNowcastValue>;
   temperatureC: Evidence<number>;
   humidityPercent: Evidence<number>;
   uvIndex: Evidence<number>;

@@ -180,3 +180,12 @@
 - [x] 保存 coverage artifact，並在 Playwright 失敗時保存 report、trace、截圖及 test results
 - [x] 完成 workflow YAML／結構靜態檢查及全部本機品質閘門
 - [x] 核對 staged diff 並建立 CI commit
+
+## 2026-07-30：未來兩小時降雨臨近預報
+
+- [x] Phase 1：建立官方 CSV endpoint、串流 transport、嚴格 parser、fixture 及資料層測試
+- [x] Phase 2：建立 domain contract、freshness、十八區格點映射、compact snapshot 及 normalization 測試
+- [x] Phase 3：整合單一 `rain-risk` 候選器、跨來源 tie-break 及評分測試
+- [x] Phase 4：整合第五來源、核心／附加來源狀態及 browser runtime validation
+- [x] Phase 5：更新降雨卡、Hero limited 語義、partial banner、文案、CSS 及 UI／scene 測試
+- [x] Phase 6：更新 E2E、文件及 QA，執行完整品質閘門與 diff review

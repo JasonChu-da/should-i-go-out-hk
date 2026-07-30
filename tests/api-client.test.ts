@@ -12,6 +12,7 @@ import {
   AQHI_CURRENT_ENDPOINT,
   HKO_CURRENT_WEATHER_ENDPOINT,
   HKO_LOCAL_FORECAST_ENDPOINT,
+  HKO_RAINFALL_NOWCAST_ENDPOINT,
   HKO_WARNING_SUMMARY_ENDPOINT,
 } from "@/lib/api/endpoints";
 
@@ -25,18 +26,20 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe("government API endpoints", () => {
-  it("defines the four official endpoints and their cache TTLs", () => {
+  it("defines the five official endpoints and their cache TTLs", () => {
     expect(API_ENDPOINTS).toEqual({
       weather: HKO_CURRENT_WEATHER_ENDPOINT,
       warnings: HKO_WARNING_SUMMARY_ENDPOINT,
       forecast: HKO_LOCAL_FORECAST_ENDPOINT,
       aqhi: AQHI_CURRENT_ENDPOINT,
+      rainfallNowcast: HKO_RAINFALL_NOWCAST_ENDPOINT,
     });
     expect(API_CACHE_TTL_MS).toEqual({
       warnings: 60_000,
       weather: 300_000,
       forecast: 600_000,
       aqhi: 900_000,
+      rainfallNowcast: 600_000,
     });
   });
 });

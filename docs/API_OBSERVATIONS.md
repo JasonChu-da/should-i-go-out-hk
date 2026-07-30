@@ -1,6 +1,8 @@
 # 政府 API 實測紀錄
 
-實測日期：2026-07-14 20:02–20:17 HKT
+初次實測：2026-07-14 20:02–20:17 HKT
+
+降雨臨近預報重驗：2026-07-30 17:25 HKT
 
 本文件記錄實際 HTTP GET，而非只依文件推測。官方規格仍以 [HKO Open Data API 文件](https://www.hko.gov.hk/tc/weatherAPI/doc/files/HKO_Open_Data_API_Documentation_tc.pdf) 與 [AQHI dataset](https://data.gov.hk/en-data/dataset/hk-dpo-datagovhk2-city-dashboard-aqhi) 為準。
 
@@ -12,6 +14,7 @@
 | HKO `warnsum` | 200 | `application/json; charset=utf-8` | 動態鍵 object | 每項警告各有時間，無全域時間 |
 | HKO `flw` | 200 | `application/json; charset=utf-8` | object | `updateTime` |
 | AQHI individual | 200 | `application/json; charset=utf-8` | 18-item array | 每項 `publish_date` |
+| HKO gridded rainfall nowcast | 200 | CSV | 五欄、58,564 筆資料列 | 每列 `Updated Date and Time` |
 
 HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI 回應有 `Cache-Control: no-cache`。應用會另記 `retrievedAt` 並自管短期 server cache。
 
@@ -81,6 +84,35 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 
 一般站 15 個；`Causeway Bay`、`Central`、`Mong Kok` 是路邊站。地區模式採環保署的[官方代表地區對照](https://www.aqhi.gov.hk/tc/what-is-aqhi/about-aqhibc9c.html?start=2)，一般使用者不混入路邊站。
 
+## HKO 香港網格點降雨臨近預報 CSV
+
+官方 endpoint：
+
+`https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv`
+
+官方 [DATA.GOV.HK dataset](https://data.gov.hk/tc-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong) 列明每 12 分鐘更新，提供未來兩小時每半小時的格點累計雨量；[資料字典](https://data.weather.gov.hk/weatherAPI/hko_data/F3/HKO_gridded_rainfall_nowcast_documentation.pdf) 確認資料屬臨時數據。
+
+2026-07-30 實際回應約 2.7 MB，共 58,564 筆資料列，即 \(121 \times 121 \times 4\)。Header 恰好為：
+
+```text
+Updated Date and Time (in Hong Kong Time),Ending Date and Time (in Hong Kong Time),Latitude (degree),Longitude (degree),Half-hourly Nowcast Accumulated Rainfall (mm)
+```
+
+五欄實際型態及語義：
+
+- 更新時間：`YYYYMMDDHHMM` 香港時間；同一檔案所有列相同。
+- 結束時間：`YYYYMMDDHHMM` 香港時間；代表對應半小時累計時段的結束。
+- 緯度、經度：十進位 degree。
+- 雨量：非負十進位毫米，代表該格點完整半小時的累計預測。
+
+該次 snapshot 的更新時間為 `202607301712`，四個唯一結束時間為 `202607301742`、`202607301812`、`202607301842`、`202607301912`。因此原始區間是 17:12–17:42、17:42–18:12、18:12–18:42、18:42–19:12，而不是以本站 17:25 擷取時間重新起算。擷取時仍有約 107 分鐘覆蓋；UI 不可承諾完整「未來兩小時」。
+
+保存的 `gridded-rainfall-nowcast-live-sanitized.csv` 由該實際回應抽取兩個格點、四個時段，共八列；其餘 58,556 列移除。Fixture 保留官方 header、時間格式、座標精度及實際雨量值，自動測試不呼叫 live endpoint。
+
+[天文台產品說明](https://www.hko.gov.hk/en/wxinfo/ts/explain.htm) 指產品水平解像度約 2 公里，並提醒雨區可快速發展、減弱或改變方向／速度，格點亦不解析格內分布。該說明頁的地圖產品會顯示 16 幅以 6 分鐘步進的分布圖；本 CSV 的實際契約則只有四段半小時雨量，兩者不可混用。
+
+[官方圖例](https://www.hko.gov.hk/en/wxinfo/awsgis/help_legend.html) 列出 nowcast 半小時雨量 `<2.5 mm`、`2.5–5 mm`、`>5 mm` 三段；天氣預報圖示另以 `0.5 mm` 或以上表示小雨。本站採 `0.5 mm` 作有雨訊號，並把 2.5 及 5 mm 分界稱為「本站雨量分級，分界參考官方圖例」，不是天文台警告級別。
+
 ## 實作與 fixture 結論
 
 - 先檢查 2xx 與 JSON Content-Type，再解析 body。
@@ -88,3 +120,4 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 - 保留 raw timestamp，另記 `retrievedAt`。
 - 使用分項觀測時間判斷 weather freshness；無法解析、過時或明顯未來值不計分。
 - Fixtures 會保留本次實測的夜間 UV 空字串、雨量 `min` 缺失、AQHI number、警告動態鍵與預報空白 optionals；另外建立可控的 daytime UV、severe warning、stale、missing、malformed 測試資料。
+- Nowcast header、四段時間、代表格點雨量及 24 分鐘 freshness 必須整體驗證；stale、malformed、timeout 或 unavailable 不可影響既有即時觀測評分，也不可把舊 snapshot 當作最新。

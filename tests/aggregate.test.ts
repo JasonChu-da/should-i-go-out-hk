@@ -1,13 +1,21 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 import aqhiFixture from "@/tests/fixtures/aqhi-live-sanitized.json";
 import forecastFixture from "@/tests/fixtures/flw-live-sanitized.json";
 import weatherFixture from "@/tests/fixtures/rhrread-night-live-sanitized.json";
 import warningFixture from "@/tests/fixtures/warnsum-monsoon-live-sanitized.json";
 import type { ApiFetchFailure, ApiFetchResult } from "@/lib/api/client";
+import type {
+  RainfallNowcastFetchFailure,
+  RainfallNowcastFetchResult,
+} from "@/lib/api/rainfall-nowcast";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
+import { buildRainfallNowcastSnapshot } from "@/lib/normalization/rainfall-nowcast";
 import { buildOutlookPayload } from "@/lib/outlook/aggregate";
 import { toScoringInput } from "@/lib/outlook/scoring-input";
 import { scoreOutlook } from "@/lib/scoring/score";
+import { parseRainfallNowcastCsv } from "@/lib/validation/rainfall-nowcast";
 
 const NOW = new Date("2026-07-14T12:20:00.000Z");
 
@@ -18,6 +26,39 @@ function success(data: unknown): ApiFetchResult {
 const unavailable: ApiFetchFailure = {
   ok: false,
   error: { type: "network", message: "暫時未能連線至政府資料服務，請稍後再試。" },
+};
+
+const nowcastCsv = readFileSync(
+  new URL(
+    "./fixtures/gridded-rainfall-nowcast-live-sanitized.csv",
+    import.meta.url,
+  ),
+  "utf8",
+)
+  .replaceAll("202607301712", "202607142012")
+  .replaceAll("202607301742", "202607142042")
+  .replaceAll("202607301812", "202607142112")
+  .replaceAll("202607301842", "202607142142")
+  .replaceAll("202607301912", "202607142212");
+const parsedNowcast = parseRainfallNowcastCsv(nowcastCsv);
+if (!parsedNowcast.ok) throw new Error("測試用降雨預報 CSV 無法解析");
+const nowcastSnapshot = buildRainfallNowcastSnapshot(
+  parsedNowcast.value,
+  parsedNowcast.issues,
+);
+if (!nowcastSnapshot.ok) throw new Error("測試用降雨預報 snapshot 無法建立");
+const nowcastSuccess: RainfallNowcastFetchResult = {
+  ok: true,
+  data: nowcastSnapshot.value,
+  retrievedAt: NOW.toISOString(),
+  fromCache: false,
+};
+const nowcastUnavailable: RainfallNowcastFetchFailure = {
+  ok: false,
+  error: {
+    type: "network",
+    message: "暫時未能連線至未來降雨預報服務。",
+  },
 };
 
 function fixtureFetcher(overrides: Partial<Record<string, ApiFetchResult>> = {}) {
@@ -31,42 +72,58 @@ function fixtureFetcher(overrides: Partial<Record<string, ApiFetchResult>> = {})
   return async (url: string) => responses[url] ?? unavailable;
 }
 
+function dependencies(
+  fetcher = fixtureFetcher(),
+  rainfallNowcast: RainfallNowcastFetchResult = nowcastSuccess,
+) {
+  return {
+    fetcher,
+    rainfallNowcastFetcher: async () => rainfallNowcast,
+    now: () => NOW,
+  };
+}
+
 describe("buildOutlookPayload failure handling", () => {
   it("builds a district payload from sanitized API fixtures", async () => {
-    const payload = await buildOutlookPayload("central-and-western", {
-      fetcher: fixtureFetcher(),
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "central-and-western",
+      dependencies(),
+    );
     expect(payload.location).toMatchObject({ label: "中西區", localized: true });
     expect(payload.status).not.toBe("error");
     expect(payload.weather.rainfallMm.value).toBe(0);
-    expect(payload.sources).toHaveLength(4);
+    expect(payload.rainfallNowcast.forecast.status).toBe("fresh");
+    expect(payload.sources).toHaveLength(5);
   });
 
   it("keeps usable sources when one API is unavailable", async () => {
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: fixtureFetcher({ [API_ENDPOINTS.aqhi]: unavailable }),
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(
+        fixtureFetcher({ [API_ENDPOINTS.aqhi]: unavailable }),
+      ),
+    );
     expect(payload.status).toBe("partial");
     expect(payload.aqhi.aqhi.status).toBe("failed");
     expect(payload.weather.rainfallMm.value).toBe(0);
   });
 
   it("keeps and scores an official Very high AQHI response", async () => {
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: fixtureFetcher({
-        [API_ENDPOINTS.aqhi]: success([
-          {
-            station: "Sha Tin",
-            aqhi: 9,
-            health_risk: "Very high",
-            publish_date: "2026-07-14T19:30:00",
-          },
-        ]),
-      }),
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(
+        fixtureFetcher({
+          [API_ENDPOINTS.aqhi]: success([
+            {
+              station: "Sha Tin",
+              aqhi: 9,
+              health_risk: "Very high",
+              publish_date: "2026-07-14T19:30:00",
+            },
+          ]),
+        }),
+      ),
+    );
     const result = scoreOutlook(toScoringInput(payload), "exercise");
 
     expect(payload.aqhi.aqhi).toMatchObject({
@@ -80,10 +137,12 @@ describe("buildOutlookPayload failure handling", () => {
   });
 
   it("does not produce an overly positive result when warning API fails", async () => {
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: fixtureFetcher({ [API_ENDPOINTS.warnings]: unavailable }),
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(
+        fixtureFetcher({ [API_ENDPOINTS.warnings]: unavailable }),
+      ),
+    );
     const result = scoreOutlook(toScoringInput(payload), "general");
     expect(payload.status).toBe("partial");
     expect(result.score).toBeLessThanOrEqual(7);
@@ -99,12 +158,14 @@ describe("buildOutlookPayload failure handling", () => {
         // Missing actionCode means the active state cannot be confirmed.
       },
     };
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: fixtureFetcher({
-        [API_ENDPOINTS.warnings]: success(malformedWarning),
-      }),
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(
+        fixtureFetcher({
+          [API_ENDPOINTS.warnings]: success(malformedWarning),
+        }),
+      ),
+    );
     const result = scoreOutlook(toScoringInput(payload), "general");
 
     expect(payload.status).toBe("partial");
@@ -116,13 +177,38 @@ describe("buildOutlookPayload failure handling", () => {
   });
 
   it("returns complete error semantics when all APIs are unavailable", async () => {
-    const payload = await buildOutlookPayload("hong-kong", {
-      fetcher: async () => unavailable,
-      now: () => NOW,
-    });
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(async () => unavailable, nowcastUnavailable),
+    );
     expect(payload.status).toBe("error");
     expect(payload.sources.every((source) => source.status === "unavailable")).toBe(true);
     expect(payload.weather.temperatureC.value).toBeNull();
+  });
+
+  it("treats nowcast as additive: failure is partial but does not limit the score", async () => {
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(fixtureFetcher(), nowcastUnavailable),
+    );
+    const result = scoreOutlook(toScoringInput(payload), "general");
+
+    expect(payload.status).toBe("partial");
+    expect(payload.rainfallNowcast.forecast.status).toBe("failed");
+    expect(result.isLimited).toBe(false);
+    expect(result.ignoredFactors).not.toContainEqual(
+      expect.objectContaining({ id: "rainfallNowcast" }),
+    );
+  });
+
+  it("remains error when only the additive nowcast source succeeds", async () => {
+    const payload = await buildOutlookPayload(
+      "hong-kong",
+      dependencies(async () => unavailable),
+    );
+
+    expect(payload.rainfallNowcast.source.status).toBe("ok");
+    expect(payload.status).toBe("error");
   });
 
   it.each([
@@ -133,10 +219,12 @@ describe("buildOutlookPayload failure handling", () => {
   ] as const)(
     "isolates a malformed %s root as one unavailable source",
     async (endpoint, malformedRoot, sourceId) => {
-      const payload = await buildOutlookPayload("hong-kong", {
-        fetcher: fixtureFetcher({ [endpoint]: success(malformedRoot) }),
-        now: () => NOW,
-      });
+      const payload = await buildOutlookPayload(
+        "hong-kong",
+        dependencies(
+          fixtureFetcher({ [endpoint]: success(malformedRoot) }),
+        ),
+      );
 
       expect(payload.status).toBe("partial");
       expect(payload.sources.find((source) => source.id === sourceId)?.status).toBe(

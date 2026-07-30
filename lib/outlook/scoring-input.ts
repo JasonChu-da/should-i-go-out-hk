@@ -44,7 +44,15 @@ export function toScoringInput(payload: OutlookPayload): ScoringInput {
         };
 
   return {
+    generatedAt: payload.generatedAt,
+    location: {
+      id: payload.location.id,
+      label: payload.location.label,
+    },
     rainfallMm: metricToEvidence(payload.weather.rainfallMm),
+    rainfallNowcast: metricToEvidence(
+      payload.rainfallNowcast.forecast,
+    ),
     temperatureC: metricToEvidence(payload.weather.temperatureC),
     humidityPercent: metricToEvidence(payload.weather.humidityPercent),
     uvIndex: metricToEvidence(payload.weather.uvIndex),

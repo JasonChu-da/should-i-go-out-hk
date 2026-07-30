@@ -1,8 +1,13 @@
 import { fetchJson, type ApiFetchResult } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
+import {
+  fetchRainfallNowcast,
+  type RainfallNowcastFetchResult,
+} from "@/lib/api/rainfall-nowcast";
 import type {
   NormalizedAqhi,
   NormalizedForecast,
+  NormalizedRainfallNowcast,
   NormalizedWarnings,
   NormalizedWeather,
   OutlookLocation,
@@ -16,6 +21,10 @@ import {
 } from "@/lib/location/districts";
 import { normalizeAqhi } from "@/lib/normalization/aqhi";
 import { normalizeForecast } from "@/lib/normalization/forecast";
+import {
+  normalizeRainfallNowcast,
+  unavailableRainfallNowcast,
+} from "@/lib/normalization/rainfall-nowcast";
 import { createUnavailableMetric } from "@/lib/normalization/shared";
 import { normalizeWarnings } from "@/lib/normalization/warnings";
 import { normalizeWeather } from "@/lib/normalization/weather";
@@ -25,9 +34,11 @@ import { parseFlw, parseRhrread, parseWarnsum } from "@/lib/validation/hko";
 import type { ValidationIssue } from "@/lib/validation/common";
 
 type GovernmentFetcher = (url: string) => Promise<ApiFetchResult>;
+type RainfallNowcastFetcher = () => Promise<RainfallNowcastFetchResult>;
 
 export interface AggregateDependencies {
   fetcher?: GovernmentFetcher;
+  rainfallNowcastFetcher?: RainfallNowcastFetcher;
   now?: () => Date;
 }
 
@@ -138,7 +149,7 @@ function locationDetails(locationId: LocationId): OutlookLocation {
       id: HONG_KONG_WIDE.id,
       label: HONG_KONG_WIDE.nameTc,
       localized: false,
-      note: "非地區化結果；雨量及 AQHI 採用全港有效資料中的保守代表值。",
+      note: "非地區化結果；即時雨量及 AQHI 採用全港有效資料中的保守代表值，未來降雨採用十八區代表格點最高值。",
     };
   }
 
@@ -148,7 +159,7 @@ function locationDetails(locationId: LocationId): OutlookLocation {
     label: district?.nameTc ?? HONG_KONG_WIDE.nameTc,
     localized: Boolean(district),
     note: district
-      ? "按地區雨量及官方代表監測站評估。"
+      ? "按地區即時雨量、最近預報格點及官方代表監測站評估。"
       : "找不到地區設定，結果可能不完整。",
   };
 }
@@ -162,14 +173,23 @@ export async function buildOutlookPayload(
   dependencies: AggregateDependencies = {},
 ): Promise<OutlookPayload> {
   const fetcher = dependencies.fetcher ?? ((url: string) => fetchJson(url));
+  const rainfallNowcastFetcher =
+    dependencies.rainfallNowcastFetcher ?? (() => fetchRainfallNowcast());
   const now = dependencies.now?.() ?? new Date();
   const generatedAt = now.toISOString();
 
-  const [weatherResult, warningResult, forecastResult, aqhiResult] = await Promise.all([
+  const [
+    weatherResult,
+    warningResult,
+    forecastResult,
+    aqhiResult,
+    rainfallNowcastResult,
+  ] = await Promise.all([
     fetcher(API_ENDPOINTS.weather),
     fetcher(API_ENDPOINTS.warnings),
     fetcher(API_ENDPOINTS.forecast),
     fetcher(API_ENDPOINTS.aqhi),
+    rainfallNowcastFetcher(),
   ]);
 
   let weather: NormalizedWeather;
@@ -244,7 +264,31 @@ export async function buildOutlookPayload(
         );
   }
 
-  const sources = [weather.source, warnings.source, forecast.source, aqhi.source];
+  let rainfallNowcast: NormalizedRainfallNowcast;
+  if (!rainfallNowcastResult.ok) {
+    rainfallNowcast = unavailableRainfallNowcast(
+      generatedAt,
+      rainfallNowcastResult.error.message,
+      rainfallNowcastResult.error.type === "invalid-data"
+        ? "malformed"
+        : "failed",
+    );
+  } else {
+    rainfallNowcast = normalizeRainfallNowcast(
+      rainfallNowcastResult.data,
+      locationId,
+      rainfallNowcastResult.retrievedAt,
+      now,
+    );
+  }
+
+  const sources = [
+    weather.source,
+    warnings.source,
+    forecast.source,
+    aqhi.source,
+    rainfallNowcast.source,
+  ];
   return {
     status: classifyOverallStatus(sources),
     generatedAt,
@@ -253,6 +297,7 @@ export async function buildOutlookPayload(
     warnings,
     forecast,
     aqhi,
+    rainfallNowcast,
     sources,
   };
 }

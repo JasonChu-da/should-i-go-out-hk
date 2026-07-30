@@ -843,6 +843,54 @@ svg {
   font-weight: 800;
 }
 
+.data-subheading {
+  margin: 0.42rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.rainfall-card > .metric-meta {
+  margin: 0;
+}
+
+.nowcast-summary {
+  display: grid;
+  gap: 0.22rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.nowcast-summary .data-subheading {
+  margin-top: 0;
+}
+
+.nowcast-summary > strong {
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.nowcast-summary > span {
+  color: var(--card-accent);
+  font-size: 0.65rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.nowcast-summary .metric-meta {
+  display: block;
+  margin: 0;
+  padding-top: 0.12rem;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.nowcast-summary .metric-unavailable {
+  margin-top: 0;
+}
+
 .metric-meta,
 .muted-copy {
   color: var(--text-secondary);

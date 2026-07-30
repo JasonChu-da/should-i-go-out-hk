@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import type {
+  OutlookPayload,
+  RainfallNowcastValue,
+} from "../lib/domain/outlook";
 import type { LocationId } from "../lib/location/districts";
 import { buildOutlookFixture } from "./fixtures/outlook";
 
@@ -58,6 +62,64 @@ async function openSuccessfulHomepage(page: Page): Promise<string[]> {
   return requestedLocations;
 }
 
+function withFutureRain(payload: OutlookPayload): OutlookPayload {
+  const forecast = payload.rainfallNowcast.forecast;
+  if (!forecast.value) throw new Error("E2E fixture 缺少降雨預報");
+  const amounts = [0, 1.8, 0, 0] as const;
+  const periods = forecast.value.periods.map((period, index) => ({
+    ...period,
+    rainfallMm: amounts[index],
+  })) as unknown as RainfallNowcastValue["periods"];
+
+  return {
+    ...payload,
+    rainfallNowcast: {
+      ...payload.rainfallNowcast,
+      forecast: {
+        ...forecast,
+        value: {
+          ...forecast.value,
+          periods,
+          firstRainWindow: {
+            firstPeriodIndex: 1,
+            lastPeriodIndex: 1,
+          },
+          peakRainPeriodIndex: 1,
+        },
+      },
+    },
+  };
+}
+
+function withUnavailableNowcast(payload: OutlookPayload): OutlookPayload {
+  const source = {
+    ...payload.rainfallNowcast.source,
+    status: "unavailable" as const,
+    publishedAt: null,
+    rawPublishedAt: null,
+    issues: ["未能取得未來降雨預報。"],
+  };
+  return {
+    ...payload,
+    status: "partial",
+    rainfallNowcast: {
+      forecast: {
+        status: "failed",
+        value: null,
+        label: "未來降雨預報",
+        place: null,
+        publishedAt: null,
+        rawPublishedAt: null,
+        message: "未能取得未來降雨預報。",
+      },
+      source,
+    },
+    sources: payload.sources.map((item) =>
+      item.id === "rainfallNowcast" ? source : item,
+    ),
+  };
+}
+
 test("首頁載入並顯示完整外出判斷", async ({ page }) => {
   await openSuccessfulHomepage(page);
 
@@ -71,7 +133,7 @@ test("首頁載入並顯示完整外出判斷", async ({ page }) => {
   await expect(page.getByText("資料齊備")).toBeVisible();
   await expect(page.getByRole("heading", { name: "現在的因素" })).toBeVisible();
   await expect(page.locator(".data-card")).toHaveCount(4);
-  await expect(page.getByText("4 個資料來源可用")).toBeVisible();
+  await expect(page.getByText("5 個資料來源可用")).toBeVisible();
 });
 
 test("切換地區後請求及判斷結果一併更新", async ({ page }) => {
@@ -100,6 +162,55 @@ test("切換外出模式後立即重新計分", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "適合出門", exact: true }),
   ).toBeVisible();
+});
+
+test("未來一小時雨訊號更新 Hero 及降雨卡，但不把背景當作正在下雨", async ({
+  page,
+}) => {
+  await mockOutlookApi(page, (locationId) =>
+    withFutureRain(buildOutlookFixture(locationId)),
+  );
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("progressbar", { name: "外出分數 6 分" }),
+  ).toBeVisible();
+  await expect(page.locator(".result-summary")).toContainText(
+    "香港部分地區約 30–60 分鐘內可能有雨",
+  );
+  await expect(
+    page.getByText("香港部分地區約 30–60 分鐘內可能有雨", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("約 30–60 分鐘內最高半小時預測雨量約 1.8 毫米", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator("#main-content")).not.toHaveAttribute(
+    "data-scene",
+    "rain",
+  );
+});
+
+test("只有未來降雨預報失敗時維持現有分數及資料齊備 Hero 語義", async ({
+  page,
+}) => {
+  await mockOutlookApi(page, (locationId) =>
+    withUnavailableNowcast(buildOutlookFixture(locationId)),
+  );
+  await page.goto("/");
+
+  await expect(page.getByText("未能完整取得未來降雨預報")).toBeVisible();
+  await expect(
+    page.getByText("目前分數仍按已確認的即時觀測及警告計算。"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: "外出分數 7 分" }),
+  ).toBeVisible();
+  await expect(page.getByText("資料齊備")).toBeVisible();
+  await expect(page.getByText("資料有限")).toHaveCount(0);
 });
 
 test("定位成功時切換至最近的沙田資料", async ({ context, page }) => {

@@ -265,7 +265,9 @@ test("API 格式錯誤顯示失敗狀態，重試後恢復", async ({ page }) =>
   );
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "現在未能可靠評分" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "暫時無法取得天氣資料" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "重新載入資料" })).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
 

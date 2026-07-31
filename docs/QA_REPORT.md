@@ -292,3 +292,33 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 - `npm run test:e2e`：Chromium 11 項全數通過。
 
 已知限制：地區仍以近似中心點的最近約 2 公里格點代表，不是區界面積預報；香港整體逐段最高值偏保守；臨時自動預報可能受地形及快速發展雨區影響；10 分鐘 cache 暫未實作 stale-if-error；沒有地圖、雷達動畫、通知或概率預報。
+
+## 2026-07-30：可安裝 PWA 與安全離線狀態
+
+### Manifest、圖示及安裝條件
+
+- Production `/manifest.webmanifest` 以 `application/manifest+json` 正常載入，包含固定 `id`、`start_url`、`scope`、`standalone`、繁中名稱及 Harbour Sky 主題／背景色。
+- 192×192、512×512、180×180 Apple touch 及 512×512 maskable PNG 均以實際 IHDR 尺寸驗證；Apple metadata 有輸出 `apple-touch-icon`。Maskable 圖案另以圓形及圓角裁切預覽檢查，主圖案位於中央安全圓內。
+- Chromium `Page.getAppManifest` 沒有 manifest error，`Page.getInstallabilityErrors` 沒有 installability error。iPhone／iPod Safari 提示的瀏覽器排除、standalone 排除、關閉記錄及 storage 受限 fallback 均有測試。
+
+### 離線、快取及更新
+
+- `/sw.js` 回傳 JavaScript Content-Type 及 `Cache-Control: no-cache, no-store, must-revalidate`；註冊的 `updateViaCache` 為 `none`，首次 activate 後由 `clients.claim()` 控制頁面。
+- Cache Storage 只含 `/offline.html`、明列品牌圖示及成功的 `/_next/static/` 資源；沒有 `/api/`、導航／SSR HTML、地區 query、錯誤回應或其他 HTML。HTTP 404 導航保持 404，不會冒充離線頁。
+- Browser API fetch 的 `cache: "no-store"`、route 的 no-store header 及 Cache Storage 無 API 回應均已驗證。Service worker runtime cache 固定最多 60 筆，activate 只清理 `go-out-` 前綴的舊版本。
+- 已載入頁面在真正離線時卸載分數、數值、警告、建議、支援面板及資料驅動場景；HTTP／invalid／timeout 類別使用「暫時無法取得天氣資料」。重新連線、手動重試及有效 payload 恢復均通過。
+- 冷啟動離線會顯示自包含 `/offline.html`；按鈕及 `online` 探測實際請求首頁，只有成功才重載。現有 headers 沒有阻止 inline retry script。
+- 同一 `/sw.js` URL 由 proxy 先後提供 v1、v2：v2 使用不同 cache 並保持 waiting，v1 繼續控制且 cache 不變；全部舊受控頁面關閉後 v2 才 activate，只清除舊 `go-out-` cache，無關 cache 保留。
+- 延遲舊地區請求被較新請求取代後，不會覆蓋較新的成功結果；offline／unavailable 狀態的舊資料在 DOM 中不存在，neutral scene 亦已驗證。
+
+### 最終品質閘門
+
+- `npm run lint`：通過，0 error／warning。
+- `npm run typecheck`：通過。
+- `npm test`：19 個 test files、358 項測試全數通過。
+- `npm run test:coverage`：19 個 test files、358 項測試全數通過；statements 90.73%、branches 83.07%、functions 94.23%、lines 93.54%。
+- `npm run build`：Next.js 16.2.12 production build 通過；`/manifest.webmanifest` 為 static route，`/api/outlook` 保持 dynamic route。
+- `npm run test:e2e`：原有 Chromium 11 項全數通過。
+- `npm run test:e2e:pwa`：獨立 production PWA project 7 項全數通過，且 global setup／teardown 沒有殘留 3200／3201 listener。
+
+已知限制：Headless Chromium 不能代替 Android Chrome 的實際安裝對話框，也不能操作 iPhone Safari 的分享選單；兩者需在 HTTPS 部署後以實機 smoke test。離線體驗刻意不保存可互動的舊天氣畫面或 payload，只顯示安全離線頁／狀態及最新官方資料時間。

@@ -6,6 +6,7 @@ const baseURL = externalBaseURL ?? managedBaseURL;
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "pwa.spec.ts",
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

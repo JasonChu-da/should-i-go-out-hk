@@ -189,3 +189,13 @@
 - [x] Phase 4：整合第五來源、核心／附加來源狀態及 browser runtime validation
 - [x] Phase 5：更新降雨卡、Hero limited 語義、partial banner、文案、CSS 及 UI／scene 測試
 - [x] Phase 6：更新 E2E、文件及 QA，執行完整品質閘門與 diff review
+
+## 2026-07-30：可安裝 PWA 與安全離線狀態
+
+- [x] 建立原生 manifest、Harbour Sky PNG／maskable／Apple 圖示及 metadata
+- [x] 建立版本化 service worker、有限靜態 cache、network-only API 與自包含離線頁
+- [x] 建立 production-only 註冊、iPhone Safari 安裝提示及受限 storage fallback
+- [x] 建立 latest-request-wins 的 loading／ready／offline／unavailable 狀態
+- [x] 驗證離線及失敗時不 render 任何舊天氣、評分、建議或資料驅動場景
+- [x] 建立 production PWA E2E、同 URL worker v1→v2 更新 proxy 及 CI coverage
+- [x] 更新決策、README、QA 文件並執行完整品質閘門與最終 diff review

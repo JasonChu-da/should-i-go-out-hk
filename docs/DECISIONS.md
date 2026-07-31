@@ -191,3 +191,13 @@ Nowcast 的本站 penalty 規則如下；三個數字依次為一般／運動／
 `payload.status` 代表五個來源是否完整；`result.isLimited` 只代表實際評分所需的核心證據是否不足。Nowcast 單獨 failed／stale／malformed 時 payload 是 `partial`，但不加入 `ignoredFactors` 或 score cap，Hero 保持「資料齊備」，另以 banner 說明目前分數仍按已確認的即時觀測及警告計算。只有 nowcast 成功而四個核心來源全失敗時仍是 `error`。
 
 理由：相同雨勢不可因來源重疊而重複扣分；最早雨段、最大雨量與真正 driver 亦不可在文案中互相矛盾。把來源完整性與評分充分性分開，可避免「分數沒有受影響，Hero 卻稱資料有限」的產品錯誤。
+
+## D-027：PWA 只離線保存應用外殼，不保存天氣或位置結果
+
+PWA 使用 Next.js 原生 manifest、手寫 service worker 與自包含離線頁，不加入 PWA 套件。Service worker 只把明列的離線頁、品牌圖示及成功的同源 `/_next/static/` 資源寫入以 `go-out-` 開頭的版本化 Cache Storage；導航／SSR HTML 不寫入 Cache Storage，`/api/`、錯誤回應、天氣 payload、地區及定位資料一律不保存。瀏覽器及 route 的 `/api/outlook` 請求繼續明確使用 `no-store`。
+
+離線或資料服務失敗時直接不 render 舊數值、評分、建議、警告或資料驅動背景。兩者分別顯示「目前離線」及「暫時無法取得天氣資料」；只有最新請求成功取得 runtime-validated、非 error payload 才恢復 UI。localStorage 只額外保存 iPhone 安裝提示是否已關閉，以及最新可用 payload 中最新的官方 `publishedAt` ISO 時間，所有讀寫均可失敗而不影響頁面。
+
+每次改動 service worker、離線頁或 core allowlist 必須遞增 `CACHE_VERSION`，令 installing worker 不會改寫 active worker 的 cache。更新不使用 `skipWaiting()`；新版等待舊受控頁面全部關閉後才 activate、以 `clients.claim()` 接管及清理同專案前綴的舊 cache。
+
+理由：即時外出判斷的主要風險不是離線功能不足，而是舊天氣看似仍然即時。只離線保存應用外殼可提供可安裝及有限離線體驗，同時維持 freshness、私隱、SSR 與政府資料 failure semantics；原生平台能力亦足以覆蓋目前單頁產品，無需承擔額外 build plugin 與 runtime caching abstraction。

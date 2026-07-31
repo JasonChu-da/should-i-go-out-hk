@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataCards } from "@/components/DataCards";
 import {
   DistrictPicker,
@@ -10,7 +10,7 @@ import {
 import { ModeTabs } from "@/components/ModeTabs";
 import { ResultHero } from "@/components/ResultHero";
 import { SourceDetails } from "@/components/SourceDetails";
-import { CompleteFailure, LoadingState } from "@/components/States";
+import { DataFailureState, LoadingState } from "@/components/States";
 import { WarningsPanel } from "@/components/WarningsPanel";
 import {
   MotionToggle,
@@ -32,11 +32,16 @@ import { scoreOutlook } from "@/lib/scoring/score";
 import type { ActivityMode } from "@/lib/scoring/types";
 import { deriveWeatherScene } from "@/lib/weather-scene/derive-weather-scene";
 
+type OutlookViewStatus = "loading" | "ready" | "offline" | "unavailable";
+
 interface RouteResponseState {
-  key: string;
+  status: OutlookViewStatus;
   payload: OutlookPayload | null;
-  failed: boolean;
 }
+
+export const LAST_PUBLIC_UPDATE_STORAGE_KEY = "pwa-last-public-update:v1";
+const ISO_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 function locationLabel(locationId: LocationId): string {
   return locationId === HONG_KONG_WIDE.id
@@ -44,12 +49,47 @@ function locationLabel(locationId: LocationId): string {
     : (getDistrictById(locationId)?.nameTc ?? HONG_KONG_WIDE.nameTc);
 }
 
-function latestPublishedAt(payload: OutlookPayload): string | null {
-  return payload.sources.reduce<string | null>((latest, source) => {
-    if (!source.publishedAt) return latest;
-    if (!latest) return source.publishedAt;
-    return Date.parse(source.publishedAt) > Date.parse(latest) ? source.publishedAt : latest;
-  }, null);
+function timestampValue(timestamp: string | null): number | null {
+  if (!timestamp || !ISO_TIMESTAMP.test(timestamp)) return null;
+  const value = Date.parse(timestamp);
+  return Number.isFinite(value) ? value : null;
+}
+
+function storedPublicUpdate(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const storedUpdate = window.localStorage.getItem(
+      LAST_PUBLIC_UPDATE_STORAGE_KEY,
+    );
+    return timestampValue(storedUpdate) === null ? null : storedUpdate;
+  } catch {
+    return null;
+  }
+}
+
+export function latestPublishedAt(payload: OutlookPayload): string | null {
+  let latest: string | null = null;
+  let latestValue = Number.NEGATIVE_INFINITY;
+
+  for (const source of payload.sources) {
+    // Warning normalization falls back to retrievedAt when no entry has an
+    // official issue/update time; that confirmation time is not a publication.
+    if (
+      source.id === "warnings" &&
+      source.publishedAt === source.retrievedAt &&
+      source.rawPublishedAt === source.retrievedAt
+    ) {
+      continue;
+    }
+    const value = timestampValue(source.publishedAt);
+    if (value !== null && value > latestValue) {
+      latest = source.publishedAt;
+      latestValue = value;
+    }
+  }
+
+  return latest;
 }
 
 function onlyRainfallNowcastIsDegraded(payload: OutlookPayload): boolean {
@@ -67,17 +107,74 @@ export default function OutlookApp() {
   const [locationStatus, setLocationStatus] = useState<LocationUiStatus>("locating");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mode, setMode] = useState<ActivityMode>("general");
-  const [retryToken, setRetryToken] = useState(0);
   const [routeResponse, setRouteResponse] = useState<RouteResponseState>({
-    key: "",
+    status: "loading",
     payload: null,
-    failed: false,
   });
+  const [lastPublicUpdate, setLastPublicUpdate] =
+    useState<string | null>(storedPublicUpdate);
   const locationRequested = useRef(false);
   const manualSelection = useRef(false);
+  const currentLocationId = useRef<LocationId>(HONG_KONG_WIDE.id);
   const shouldMoveFocus = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  const requestId = useRef(0);
   const [motionEnabled, setMotionEnabled] = useMotionPreference();
   const reducedMotion = usePrefersReducedMotion();
+
+  const loadOutlook = useCallback((nextLocationId: LocationId) => {
+    const nextRequestId = requestId.current + 1;
+    requestId.current = nextRequestId;
+    activeRequest.current?.abort();
+
+    const controller = new AbortController();
+    activeRequest.current = controller;
+
+    void Promise.resolve()
+      .then(() => {
+        if (requestId.current !== nextRequestId) return null;
+        setRouteResponse({ status: "loading", payload: null });
+        return fetchOutlookRoute(nextLocationId, {
+          signal: controller.signal,
+        });
+      })
+      .then((response) => {
+        if (!response) return;
+        if (
+          requestId.current !== nextRequestId ||
+          (!response.ok && response.error.type === "aborted")
+        ) {
+          return;
+        }
+
+        activeRequest.current = null;
+
+        if (response.ok && response.payload.status !== "error") {
+          const latestUpdate = latestPublishedAt(response.payload);
+          if (latestUpdate) {
+            setLastPublicUpdate(latestUpdate);
+            try {
+              window.localStorage.setItem(
+                LAST_PUBLIC_UPDATE_STORAGE_KEY,
+                latestUpdate,
+              );
+            } catch {
+              // Storage may be unavailable in private browsing.
+            }
+          }
+          setRouteResponse({ status: "ready", payload: response.payload });
+          return;
+        }
+
+        setRouteResponse({
+          status:
+            !response.ok && response.error.type === "network"
+              ? "offline"
+              : "unavailable",
+          payload: null,
+        });
+      });
+  }, []);
 
   useEffect(() => {
     if (locationRequested.current) return;
@@ -88,75 +185,82 @@ export default function OutlookApp() {
 
       if (result.status === "success") {
         // getNearestDistrict only returns entries from the canonical DISTRICTS list.
-        setLocationId(result.district.id as LocationId);
+        const nextLocationId = result.district.id as LocationId;
+        currentLocationId.current = nextLocationId;
+        setLocationId(nextLocationId);
         setLocationStatus("located");
+        loadOutlook(nextLocationId);
         return;
       }
 
+      currentLocationId.current = HONG_KONG_WIDE.id;
       setLocationId(HONG_KONG_WIDE.id);
       setLocationStatus(result.status);
       setPickerOpen(true);
     });
-  }, []);
+  }, [loadOutlook]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    let current = true;
-    const key = `${locationId}:${retryToken}`;
+    loadOutlook(HONG_KONG_WIDE.id);
+  }, [loadOutlook]);
 
-    void fetchOutlookRoute(locationId, { signal: controller.signal }).then(
-      (response) => {
-        if (!current || (!response.ok && response.error.type === "aborted")) {
-          return;
-        }
-
-        setRouteResponse(
-          response.ok
-            ? { key, payload: response.payload, failed: false }
-            : { key, payload: null, failed: true },
-        );
-      },
-    );
-
-    return () => {
-      current = false;
-      controller.abort();
+  useEffect(() => {
+    const handleOffline = () => {
+      setRouteResponse({ status: "offline", payload: null });
     };
-  }, [locationId, retryToken]);
+    const handleOnline = () => {
+      loadOutlook(currentLocationId.current);
+    };
 
-  const requestKey = `${locationId}:${retryToken}`;
-  const loading = routeResponse.key !== requestKey;
-  const payload = loading ? null : routeResponse.payload;
-  const requestFailed = !loading && routeResponse.failed;
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [loadOutlook]);
+
+  useEffect(
+    () => () => {
+      requestId.current += 1;
+      activeRequest.current?.abort();
+    },
+    [],
+  );
+
+  const viewStatus = routeResponse.status;
+  const loading = viewStatus === "loading";
+  const payload = viewStatus === "ready" ? routeResponse.payload : null;
 
   const result = useMemo(() => {
-    if (!payload || payload.status === "error") return null;
+    if (!payload) return null;
     return scoreOutlook(toScoringInput(payload), mode);
   }, [mode, payload]);
 
   useEffect(() => {
-    if (loading || !shouldMoveFocus.current) return;
+    if (viewStatus === "loading" || !shouldMoveFocus.current) return;
 
     const target = document.getElementById(
       result ? "result-title" : "complete-failure-title",
     );
     target?.focus();
     shouldMoveFocus.current = false;
-  }, [loading, requestFailed, result]);
+  }, [result, viewStatus]);
 
   const selectLocation = (nextLocationId: LocationId) => {
     manualSelection.current = true;
     shouldMoveFocus.current = true;
+    currentLocationId.current = nextLocationId;
     setLocationId(nextLocationId);
     setLocationStatus("manual");
     setPickerOpen(false);
+    loadOutlook(nextLocationId);
   };
 
   const retry = () => {
     shouldMoveFocus.current = true;
-    setRetryToken((token) => token + 1);
+    loadOutlook(currentLocationId.current);
   };
-  const completeFailure = requestFailed || payload?.status === "error";
   const latestUpdate = payload ? latestPublishedAt(payload) : null;
   const locationNote =
     payload?.location.note ??
@@ -171,6 +275,7 @@ export default function OutlookApp() {
   return (
     <>
     <WeatherScene
+      key={viewStatus === "ready" ? "ready" : "safe"}
       scene={weatherScene}
       motionEnabled={motionEnabled}
       reducedMotion={reducedMotion}
@@ -180,6 +285,7 @@ export default function OutlookApp() {
       className="app-shell"
       id="main-content"
       tabIndex={-1}
+      data-outlook-state={viewStatus}
       data-scene={weatherScene.scene}
       data-period={weatherScene.period}
     >
@@ -201,16 +307,38 @@ export default function OutlookApp() {
         status={locationStatus}
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((open) => !open)}
-        updateLabel={latestUpdate ? `更新於 ${formatHktTime(latestUpdate)}` : loading ? "正在更新…" : "等待資料"}
+        updateLabel={
+          latestUpdate
+            ? `更新於 ${formatHktTime(latestUpdate)}`
+            : viewStatus === "loading"
+              ? "正在更新…"
+              : viewStatus === "offline"
+                ? "目前離線"
+                : "資料暫不可用"
+        }
       />
 
       <ModeTabs mode={mode} onChange={setMode} />
 
       {loading ? <LoadingState /> : null}
 
-      {!loading && completeFailure ? <CompleteFailure onRetry={retry} /> : null}
+      {viewStatus === "offline" ? (
+        <DataFailureState
+          kind="offline"
+          lastPublicUpdate={lastPublicUpdate}
+          onRetry={retry}
+        />
+      ) : null}
 
-      {!loading && payload && payload.status === "partial" ? (
+      {viewStatus === "unavailable" ? (
+        <DataFailureState
+          kind="unavailable"
+          lastPublicUpdate={lastPublicUpdate}
+          onRetry={retry}
+        />
+      ) : null}
+
+      {payload?.status === "partial" ? (
         <div className="partial-banner" role="status">
           <div>
             <strong>
@@ -229,7 +357,7 @@ export default function OutlookApp() {
         </div>
       ) : null}
 
-      {!loading && payload && payload.status !== "error" && result ? (
+      {payload && result ? (
         <div className="decision-layout">
           <ResultHero result={result} mode={mode} />
           <DataCards
@@ -246,14 +374,12 @@ export default function OutlookApp() {
         <DistrictPicker locationId={locationId} onSelect={selectLocation} />
       ) : null}
 
-      {!loading && payload && payload.status !== "error" && result ? (
+      {payload && result ? (
         <div className="support-layout">
           <WarningsPanel warnings={payload.warnings} forecast={payload.forecast} weather={payload.weather} />
           <SourceDetails sources={payload.sources} />
         </div>
       ) : null}
-
-      {!loading && payload?.status === "error" ? <SourceDetails sources={payload.sources} /> : null}
 
       <footer className="site-footer">
         <p><strong>資料限制：</strong>即時地區雨量是過去一小時紀錄；未來降雨是約 2 公里格點的臨時自動預報，可能受地形及快速發展雨區影響。濕度及紫外線亦不一定代表你所在位置。</p>

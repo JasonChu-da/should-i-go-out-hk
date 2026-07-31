@@ -12,6 +12,8 @@
 - 顯示天氣與體感、過去一小時雨量、未來最多兩小時的降雨訊號、紫外線、AQHI、生效警告及本港預報。
 - 每個來源分別顯示發布／確認時間及本站擷取時間。
 - 支援 loading、部分失敗、完全失敗、重試、過時及 malformed 資料狀態。
+- 可在 Android／Chrome 安裝成 standalone PWA；iPhone Safari 會提供一次簡短的「加入主畫面」指引。
+- 離線時不顯示或保存舊天氣、評分或位置，只提供清楚的離線狀態、最新官方資料時間及重新連線出口。
 - 嚴重警告覆蓋一般分數；警告未確認或相關資料不足時限制結論信心。
 - 全頁天氣背景只按 fresh 天文台圖示、所選地區即時雨量、結構化警告及香港時間決定；未來降雨不會令背景假裝現在正在下雨，資料不足或過時時使用 neutral 靜態背景。
 - 支援 `prefers-reduced-motion` 及「動態背景：開／關」；只把這一項視覺偏好存於 localStorage，不儲存位置或天氣資料。
@@ -67,6 +69,17 @@ npm run dev
 
 開啟 `http://localhost:3000`。專案不需要 `.env`、API key、帳戶或資料庫。
 
+Service worker 只在 production build 註冊，避免開發時把變動中的 Next.js chunks 留在瀏覽器 cache。要在本機驗證 PWA，先執行 `npm run build`，再使用下方的 production PWA E2E，或執行 `npm run start` 後以 Chromium 開啟 localhost。
+
+## 安裝及離線行為
+
+- Android Chrome：網站符合安裝條件後，可從瀏覽器選單選擇「安裝應用程式」或「加到主畫面」。
+- iPhone Safari：點工具列的「分享」，再選「加入主畫面」。已從主畫面以 standalone 模式開啟或已關閉提示時，網站不會重複顯示指引。
+- 正式網址必須使用 HTTPS；localhost 只供開發及自動測試。
+- Service worker 只離線保存自包含離線頁、版本化品牌圖示及成功的同源 Next.js 靜態資源。導航／SSR HTML、`/api/`、錯誤回應、天氣 payload、地區及定位資料不會寫入 Cache Storage。
+- 網絡中斷或資料服務失敗時，所有舊天氣數值、警告、建議、評分及資料驅動背景都會停止 render。重新連線後會實際重抓 `/api/outlook`，只有有效資料返回才恢復結果。
+- 每次修改 `public/sw.js`、`public/offline.html` 或 service worker 的 core allowlist，都必須同步遞增 `CACHE_VERSION`，避免 installing worker 改寫 active worker 的 cache。
+
 開發環境另有 `http://localhost:3000/scene-preview`，可人工切換 clear、cloudy、overcast、rain、heavy rain、storm、hot、neutral 及日／夜色調。此 route 在 production 直接回傳 404。
 
 已有 lockfile 的乾淨環境可用 `npm ci` 代替 `npm install`。
@@ -87,12 +100,15 @@ npm run test:coverage
 npx playwright install chromium
 npm run test:e2e
 npm run build
+npm run test:e2e:pwa
 npm run start
 ```
 
 `npm run test:coverage` 會量測核心業務程式碼並在 `coverage/` 產生 HTML 與 JSON summary；最低門檻定義於 `vitest.config.ts`。Playwright 的 Chromium binary 每個開發環境只需安裝一次，`npm run test:e2e` 會自行在 `http://127.0.0.1:3100` 啟動及關閉 Next.js 開發伺服器。
 
 Vitest 與 Playwright 全部使用本地 fixture／route interception，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
+
+`npm run test:e2e:pwa` 必須在 `npm run build` 之後執行。它以獨立 production server 及本機 proxy 驗證 manifest、安裝條件、service worker headers／生命週期、靜態 cache、真正離線、重新連線，以及同一 `/sw.js` URL 從 v1 更新至 v2 的 waiting／activate 行為。它不使用已 deprecated 的 Lighthouse PWA audit。
 
 正常本機環境直接執行 `npm run test:e2e` 即可，由 Playwright 管理測試 server。若 CI／sandbox 已另行管理 server，可把其 origin 傳入 `PLAYWRIGHT_BASE_URL`，Playwright 便不會重複啟動 server。
 
@@ -144,6 +160,7 @@ npm run build
 ### Vercel runtime 與快取行為
 
 - `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
+- PWA service worker 對所有 `/api/` 採 network-only，前端 fetch 亦保持 `cache: "no-store"`；PWA 靜態 cache 不改變 server-side freshness 或 API failure semantics。
 - 五個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。降雨 CSV 的 timeout 覆蓋 response headers、完整 body download 及串流解析。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
 - 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 CSV 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存約 2.7 MB 原始 CSV。
 - 降雨 CSV transport 只接受官方合理 Content-Type，實際串流讀取上限為 5 MiB、100,000 筆資料列；超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
@@ -158,6 +175,7 @@ npm run build
 - 沒有登入、帳戶、資料庫、analytics、廣告或使用者文字輸入。
 - 精確 latitude／longitude 只在瀏覽器目前頁面的記憶體中使用，立即轉成 district id；server 只收到 canonical id。
 - 手動地區選擇只保留在 React state，不寫入 localStorage／sessionStorage。
+- PWA 額外只保存兩項非敏感、版本化資料：iPhone 安裝提示是否已關閉，以及最新可用 payload 中最新的官方發布時間。受限儲存模式下讀寫失敗會被安全忽略。
 - 所有政府 API 都由 `/api/outlook` server route 存取；失敗結果不會快取。
 
 ## 已知限制
@@ -171,3 +189,4 @@ npm run build
 - 晾衫預報判斷只使用集中、已測試的有限降雨字詞，不會從任意預報文字推斷精確雨量。
 - server cache 是每個 process／serverless instance 的短期記憶體 cache；重新啟動或不同 instance 不共享。
 - 上游 API 可變更 schema 或暫時中斷；應用會顯示 partial／failure，不會補造數值。
+- Headless Chromium 可驗證 manifest、service worker 及 installability 條件，但 Android 安裝對話框與 Mobile Safari 分享選單仍需在部署後以實機 smoke test 確認。

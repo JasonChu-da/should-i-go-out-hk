@@ -2,7 +2,7 @@ import type { MetricStatus, NormalizedMetric } from "@/lib/domain/outlook";
 
 const HKT_DATE_TIME = new Intl.DateTimeFormat("zh-HK", {
   timeZone: "Asia/Hong_Kong",
-  month: "numeric",
+  month: "long",
   day: "numeric",
   hour: "2-digit",
   minute: "2-digit",
@@ -62,4 +62,3 @@ export function uvRisk(value: number): string {
   if (value >= 3) return "中等";
   return "低";
 }
-

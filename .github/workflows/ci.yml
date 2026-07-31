@@ -50,6 +50,9 @@ jobs:
       - name: Run Playwright E2E tests
         run: npm run test:e2e
 
+      - name: Run production PWA E2E tests
+        run: npm run test:e2e:pwa
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7

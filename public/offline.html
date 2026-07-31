@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#061827" />
+    <meta name="color-scheme" content="dark" />
+    <title>目前離線｜香港現在適合出門嗎？</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        min-height: 100vh;
+        min-height: 100svh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 1.25rem;
+        background:
+          radial-gradient(circle at 75% 12%, #185f91 0, transparent 18rem),
+          linear-gradient(155deg, #123653 0%, #0a2740 50%, #061827 100%);
+        color: #f4faff;
+      }
+
+      main {
+        width: min(100%, 30rem);
+        padding: clamp(1.5rem, 6vw, 2.5rem);
+        border: 1px solid rgb(120 203 255 / 28%);
+        border-radius: 1.75rem;
+        background: rgb(8 31 51 / 88%);
+        box-shadow: 0 1.5rem 4.5rem rgb(1 10 20 / 38%);
+        text-align: center;
+      }
+
+      .mark {
+        width: 5.5rem;
+        height: 5.5rem;
+        margin: 0 auto 1.25rem;
+        color: #78cbff;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.75rem, 8vw, 2.5rem);
+        line-height: 1.15;
+        letter-spacing: -0.03em;
+      }
+
+      p {
+        margin: 0.8rem 0 0;
+        color: #a9c5d8;
+        line-height: 1.65;
+      }
+
+      .last-update {
+        color: #f4faff;
+        font-variant-numeric: tabular-nums;
+      }
+
+      button {
+        width: 100%;
+        min-height: 3rem;
+        margin-top: 1.5rem;
+        border: 0;
+        border-radius: 0.9rem;
+        background: #78cbff;
+        color: #061827;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 800;
+      }
+
+      button:hover {
+        background: #9bd9ff;
+      }
+
+      button:focus-visible {
+        outline: 0.2rem solid #f4faff;
+        outline-offset: 0.2rem;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .status {
+        min-height: 1.65em;
+        font-size: 0.9rem;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg
+        class="mark"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="3.5"></circle>
+        <path
+          d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+        ></path>
+      </svg>
+      <h1>目前離線</h1>
+      <p>無法取得即時天氣，請檢查網絡後再試。</p>
+      <p id="last-update" class="last-update" hidden></p>
+      <button id="retry-button" type="button">重新嘗試</button>
+      <p id="retry-status" class="status" role="status" aria-live="polite"></p>
+      <noscript><p>重新連線後，請重新整理此頁。</p></noscript>
+    </main>
+    <script>
+      (() => {
+        const retryButton = document.querySelector("#retry-button");
+        const retryStatus = document.querySelector("#retry-status");
+        const lastUpdate = document.querySelector("#last-update");
+
+        try {
+          const stored = localStorage.getItem("pwa-last-public-update:v1");
+          const date = stored ? new Date(stored) : null;
+          if (date && Number.isFinite(date.getTime())) {
+            const formatted = new Intl.DateTimeFormat("zh-HK", {
+              timeZone: "Asia/Hong_Kong",
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            }).format(date);
+            lastUpdate.textContent = `最新官方資料時間：${formatted}`;
+            lastUpdate.hidden = false;
+          }
+        } catch {}
+
+        async function retry() {
+          retryButton.disabled = true;
+          retryStatus.textContent = "正在重新連線…";
+
+          try {
+            const response = await fetch("/", { cache: "no-store" });
+            if (!response.ok) {
+              throw new Error("首頁暫時不可用");
+            }
+            location.reload();
+          } catch {
+            retryStatus.textContent = navigator.onLine
+              ? "網站暫時未能連線，請稍後再試。"
+              : "仍然離線，請檢查網絡後再試。";
+            retryButton.disabled = false;
+          }
+        }
+
+        retryButton.addEventListener("click", retry);
+        window.addEventListener("online", retry);
+      })();
+    </script>
+  </body>
+</html>

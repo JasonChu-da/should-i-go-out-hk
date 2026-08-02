@@ -141,7 +141,7 @@ async function expectNoDerivedWeather(page: Page): Promise<void> {
   await expect(page.getByRole("progressbar")).toHaveCount(0);
   await expect(
     page.locator(
-      ".decision-layout, .support-layout, .data-card, #result-title",
+      ".decision-layout, .rainfall-feature, .metric-summary-card, #result-title",
     ),
   ).toHaveCount(0);
   await expect(page.locator('main[data-scene="neutral"]')).toBeVisible();
@@ -476,7 +476,8 @@ test("已載入頁面區分離線與服務不可用，並只在真實成功後�
 }) => {
   await openReadyHomepage(page);
   await waitForController(page);
-  await expect(page.locator(".data-card")).toHaveCount(4);
+  await expect(page.locator(".rainfall-feature")).toHaveCount(1);
+  await expect(page.locator(".metric-summary-card")).toHaveCount(3);
 
   await context.setOffline(true);
   await expect(page.locator('main[data-outlook-state="offline"]')).toBeVisible();
@@ -564,6 +565,7 @@ test("較舊的延遲請求不會覆蓋較新的地區結果", async ({
 
   await page.goto("/");
   await oldStarted;
+  await page.getByRole("button", { name: /香港整體/ }).click();
   const districtButton = page.getByRole("button", {
     name: "中西區",
     exact: true,
@@ -574,9 +576,7 @@ test("較舊的延遲請求不會覆蓋較新的地區結果", async ({
     window.dispatchEvent(new Event("online"));
   });
   await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "中西區", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".location-name")).toHaveText("中西區");
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "aria-valuenow",
     "4",
@@ -585,9 +585,7 @@ test("較舊的延遲請求不會覆蓋較新的地區結果", async ({
   releaseOld();
   await oldFinished;
   await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "中西區", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".location-name")).toHaveText("中西區");
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "aria-valuenow",
     "4",
@@ -690,7 +688,13 @@ test("同一 /sw.js URL 的新版會 waiting，全部舊分頁關閉後才 activ
   await page.close();
 
   const updatedPage = observerPage;
-  await openReadyHomepage(updatedPage);
+  await expect(async () => {
+    await updatedPage.goto("/", { timeout: 5_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(
+    updatedPage.locator('main[data-outlook-state="ready"]'),
+  ).toBeVisible();
+  await expect(updatedPage.getByRole("progressbar")).toHaveCount(1);
   await waitForController(updatedPage);
   await expect
     .poll(() =>

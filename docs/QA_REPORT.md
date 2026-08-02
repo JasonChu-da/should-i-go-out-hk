@@ -1,5 +1,7 @@
 # MVP 驗收與 QA 紀錄
 
+目前自動測試快照：2026-08-02、程式 commit `14a0ba8`，`npm test` 為 21 個 Vitest test files、377 項測試全部通過。以下較早日期章節保留當時的行為證據，但舊的測試總數已移除；目前數量一律以這個日期化快照及最新指令輸出為準。
+
 驗收日期：2026-07-14（HKT）
 
 ## 實際政府 API 探測
@@ -33,7 +35,7 @@
 - `/api/outlook` default、十八區、invalid route 及 headers。
 - 內部 browser payload runtime boundary、12 秒 end-to-end deadline、cleanup／非 cleanup abort、永久 pending fetch／JSON body、初始 UI、三模式、十八區 picker、loading／failure／retry 語意。
 
-結果：15 個 test files、259 項測試全部通過。測試只用本地 fixture 或 mocked fetcher，沒有 live government API dependency。
+結果：當時完整測試通過。測試只用本地 fixture 或 mocked fetcher，沒有 live government API dependency。
 
 ## Accessibility 與 responsive 檢查
 
@@ -65,7 +67,7 @@
 | --- | --- |
 | `npm run lint` | 通過，0 error |
 | `npm run typecheck` | 通過 |
-| `npm test` | 15 files、259 tests 通過 |
+| `npm test` | 當時完整測試通過；目前數量見頁首快照 |
 | `npm run build` | 通過；首頁 static，`/api/outlook` dynamic |
 | `npm run start -- -p 3001` | production server 成功啟動並完成上述 smoke test |
 
@@ -78,7 +80,7 @@
 | 命令 | 實際結果 |
 | --- | --- |
 | `npm run lint` | 通過；ESLint 0 error |
-| `npm test` | 通過；15 test files、259 tests passed |
+| `npm test` | 當時完整測試通過；目前數量見頁首快照 |
 | `npm run build` | 通過；Next.js 16.2.10 production build，`/` static、`/api/outlook` dynamic |
 | `npm run typecheck` | 通過；route types generated，`tsc --noEmit` 0 error |
 
@@ -153,7 +155,7 @@ runtime 原始碼沒有 localStorage、sessionStorage、IndexedDB、database 或
 | 命令 | 真實結果 |
 | --- | --- |
 | `npm run lint` | 通過；ESLint 0 error。 |
-| `npm test` | 通過；16 test files、278 tests passed。 |
+| `npm test` | 當時完整測試通過；目前數量見頁首快照。 |
 | `npm run build` | 通過；Next.js 16.2.10 production build 完成。 |
 | `npm run start -- -p 3101` | 啟動成功；`/` 為 200，`/scene-preview` 為 404。 |
 
@@ -188,7 +190,7 @@ runtime 原始碼沒有 localStorage、sessionStorage、IndexedDB、database 或
 | --- | --- |
 | `npm run typecheck` | 通過；route types generated，TypeScript 0 error。 |
 | `npm run lint` | 通過；ESLint 0 error。 |
-| `npm test` | 通過；16 test files、280 tests passed。 |
+| `npm test` | 當時完整測試通過；目前數量見頁首快照。 |
 | `npm run build` | 通過；Next.js 16.2.10 production build 完成。 |
 | production smoke test | `/` 為 HTTP 200；`/scene-preview` 為 HTTP 404。 |
 
@@ -249,7 +251,7 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 | 命令 | 結果 |
 | --- | --- |
 | `npm run lint` | 通過；ESLint 0 error。 |
-| `npm test` | 通過；16 test files、287 tests passed。 |
+| `npm test` | 當時完整測試通過；目前數量見頁首快照。 |
 | `npm run build` | 通過；Next.js 16.2.10 production build，`/api/outlook` 為 dynamic route。 |
 | `npm run typecheck` | 通過；route types generated，TypeScript 0 error。 |
 
@@ -286,7 +288,7 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 
 - `npm run lint`：通過。
 - `npm run typecheck`：通過。
-- `npm test`／`npm run test:coverage`：18 個 test files、351 項測試全數通過。
+- `npm test`／`npm run test:coverage`：當時完整測試通過；目前數量見頁首快照。
 - Coverage：statements 90.73%、branches 83.07%、functions 94.23%、lines 93.54%，全部高於設定門檻。
 - `npm run build`：Next.js production build 通過；`/api/outlook` 保持 dynamic route。
 - `npm run test:e2e`：Chromium 11 項全數通過。
@@ -315,8 +317,8 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 
 - `npm run lint`：通過，0 error／warning。
 - `npm run typecheck`：通過。
-- `npm test`：19 個 test files、358 項測試全數通過。
-- `npm run test:coverage`：19 個 test files、358 項測試全數通過；statements 90.73%、branches 83.07%、functions 94.23%、lines 93.54%。
+- `npm test`：當時完整測試通過；目前數量見頁首快照。
+- `npm run test:coverage`：當時完整測試通過；當次 coverage 為 statements 90.73%、branches 83.07%、functions 94.23%、lines 93.54%。
 - `npm run build`：Next.js 16.2.12 production build 通過；`/manifest.webmanifest` 為 static route，`/api/outlook` 保持 dynamic route。
 - `npm run test:e2e`：原有 Chromium 11 項全數通過。
 - `npm run test:e2e:pwa`：獨立 production PWA project 7 項全數通過，且 global setup／teardown 沒有殘留 3200／3201 listener。

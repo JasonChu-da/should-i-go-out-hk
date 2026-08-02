@@ -16,7 +16,7 @@
 - 離線時不顯示或保存舊天氣、評分或位置，只提供清楚的離線狀態、最新官方資料時間及重新連線出口。
 - 嚴重警告覆蓋一般分數；警告未確認或相關資料不足時限制結論信心。
 - 全頁天氣背景只按 fresh 天文台圖示、所選地區即時雨量、結構化警告及香港時間決定；未來降雨不會令背景假裝現在正在下雨，資料不足或過時時使用 neutral 靜態背景。
-- 支援 `prefers-reduced-motion` 及「動態背景：開／關」；只把這一項視覺偏好存於 localStorage，不儲存位置或天氣資料。
+- 支援 `prefers-reduced-motion` 及「動態背景：開／關」；localStorage 只保存下方列明的非敏感偏好及公開時間 metadata，不儲存位置或天氣 payload。
 
 ## 資料流程與架構
 
@@ -108,9 +108,17 @@ npm run start
 
 Vitest 與 Playwright 全部使用本地 fixture／route interception，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
 
+測試檔案及案例數以每次 `npm test` 的輸出為準，不作固定驗收門檻。最近一次快照為 2026-08-02、程式 commit `14a0ba8`：21 個 Vitest test files、377 項測試全部通過；之後新增或刪除測試時應以新輸出取代這個快照。
+
 `npm run test:e2e:pwa` 必須在 `npm run build` 之後執行。它以獨立 production server 及本機 proxy 驗證 manifest、安裝條件、service worker headers／生命週期、靜態 cache、真正離線、重新連線，以及同一 `/sw.js` URL 從 v1 更新至 v2 的 waiting／activate 行為。它不使用已 deprecated 的 Lighthouse PWA audit。
 
 正常本機環境直接執行 `npm run test:e2e` 即可，由 Playwright 管理測試 server。若 CI／sandbox 已另行管理 server，可把其 origin 傳入 `PLAYWRIGHT_BASE_URL`，Playwright 便不會重複啟動 server。
+
+### 行尾政策
+
+Repository 以 `.gitattributes` 的 `* text=auto eol=lf` 統一新加入或重新寫入的文字檔為 LF；Git 自動辨識的 binary 不會被當成文字轉換。加入政策前，本機全域 `core.autocrlf=true`，而 repository 沒有 `.gitattributes`，所以 working tree 同時出現 LF、CRLF 及 mixed 檔案，Git 才會顯示「LF will be replaced by CRLF」warning。
+
+本次沒有執行 `git add --renormalize .`，避免把現有大型功能差異混入純行尾 diff。日後只在修改個別檔案時自然套用，或把明確檔案以 `git add --renormalize <path>` 放進獨立、可審核的 hygiene commit。
 
 ## Vercel Hobby 免費部署
 
@@ -161,9 +169,9 @@ npm run build
 
 - `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
 - PWA service worker 對所有 `/api/` 採 network-only，前端 fetch 亦保持 `cache: "no-store"`；PWA 靜態 cache 不改變 server-side freshness 或 API failure semantics。
-- 五個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。降雨 CSV 的 timeout 覆蓋 response headers、完整 body download 及串流解析。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
-- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 CSV 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存約 2.7 MB 原始 CSV。
-- 降雨 CSV transport 只接受官方合理 Content-Type，實際串流讀取上限為 5 MiB、100,000 筆資料列；超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
+- 五個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。降雨 ZIP 的 timeout 覆蓋 response headers、完整 body download、解壓及 CSV 解析。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
+- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 ZIP 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存原始檔案。
+- 降雨 transport 使用官方約 16 KB ZIP，壓縮後上限為 512 KiB、解壓後上限為 5 MiB，另限制 100,000 筆資料列；超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
 - HTTP、網絡、timeout、Content-Type 或 JSON 解碼失敗不會寫入快取。若上游回傳可解碼但 schema malformed 的 JSON，該原始回應可能保留至短期 TTL 屆滿；runtime validation 仍會把相關來源標為不可用，絕不把 malformed 值納入計分。
 - 記憶體 cache 不會跨 cold start、重新部署或不同 Function instance 共享，因此只能減少部分重複請求，不能視作可靠的持久 cache。這符合 MVP「無資料庫」限制。
 - 新 Vercel 專案預設啟用 Fluid compute；Hobby 的預設 Function duration 足以涵蓋應用本身的 8 秒上游 timeout，毋須額外提高 duration 或購買付費方案。最新上限仍應以 [Vercel Function duration](https://vercel.com/docs/functions/configuring-functions/duration) 為準。
@@ -175,8 +183,16 @@ npm run build
 - 沒有登入、帳戶、資料庫、analytics、廣告或使用者文字輸入。
 - 精確 latitude／longitude 只在瀏覽器目前頁面的記憶體中使用，立即轉成 district id；server 只收到 canonical id。
 - 手動地區選擇只保留在 React state，不寫入 localStorage／sessionStorage。
-- PWA 額外只保存兩項非敏感、版本化資料：iPhone 安裝提示是否已關閉，以及最新可用 payload 中最新的官方發布時間。受限儲存模式下讀寫失敗會被安全忽略。
+- Runtime 沒有使用 sessionStorage；localStorage 讀寫在受限儲存模式下失敗時會被安全忽略。
 - 所有政府 API 都由 `/api/outlook` server route 存取；失敗結果不會快取。
+
+實際程式碼使用的版本化 localStorage key：
+
+| Key | 保存內容 | 用途 | 敏感資料 |
+| --- | --- | --- | --- |
+| `weather-scene-motion:v1` | `on`／`off` | 記住動態天氣背景偏好；系統 `prefers-reduced-motion` 仍優先停用動畫 | 否，只是視覺偏好 |
+| `pwa-ios-install-hint-dismissed:v1` | 使用者關閉提示後保存字串 `true` | 避免重複顯示 iPhone Safari「加入主畫面」提示 | 否，只是提示狀態 |
+| `pwa-last-public-update:v1` | 最新成功 payload 中最新官方 `publishedAt` 的 ISO 時間字串 | 離線頁顯示上次成功取得的公開資料時間；不保存 payload 本身 | 否，只是公開資料時間 metadata |
 
 ## 已知限制
 

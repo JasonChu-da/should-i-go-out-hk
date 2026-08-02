@@ -7,7 +7,7 @@ export type WeatherSceneName =
   | "hot"
   | "neutral";
 
-export type WeatherPeriod = "day" | "night";
+export type WeatherPeriod = "day" | "dusk" | "night";
 export type WeatherPrecipitation = "none" | "light" | "medium" | "heavy";
 export type WeatherSceneSeverity = "normal" | "caution" | "danger";
 

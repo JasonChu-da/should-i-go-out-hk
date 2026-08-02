@@ -84,9 +84,17 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 
 一般站 15 個；`Causeway Bay`、`Central`、`Mong Kok` 是路邊站。地區模式採環保署的[官方代表地區對照](https://www.aqhi.gov.hk/tc/what-is-aqhi/about-aqhibc9c.html?start=2)，一般使用者不混入路邊站。
 
-## HKO 香港網格點降雨臨近預報 CSV
+## HKO 香港網格點降雨臨近預報壓縮來源
 
-官方 endpoint：
+2026-08-02 重驗發現原本約 2.7 MB 的五欄 CSV 在 production 網絡 60 秒只傳送約 475 KB，無法可靠用於 request path。官方 CSDI dataset 同時公開：
+
+`https://data.weather.gov.hk/weatherAPI/hko_data/csdi/dataset/gridded_rainfall_nowcast.zip`
+
+實測 ZIP 為 16,161 bytes、約 3.4 秒下載，內含單一 216,141 bytes 的 `gridded_rainfall_nowcast.csv`。內容有 3,360 列，即 (840 \times 4) 個香港格點／時段；日期、時間、時區、經緯度及半小時累計雨量分為十七欄。13:12 snapshot 以更新時間欄起首，13:48 snapshot 則以結束時間欄起首，證實欄位順序不穩定；runtime 因此驗證精確欄名集合後按名稱映射。另分別限制壓縮後 512 KiB、解壓後 5 MiB、100,000 列及完整 8 秒 deadline。
+
+## 歷史五欄 CSV 與 fixture
+
+舊 endpoint：
 
 `https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv`
 

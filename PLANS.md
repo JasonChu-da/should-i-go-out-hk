@@ -1,8 +1,32 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-07-16
+更新日期：2026-08-02
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
+
+## 2026-08-02：目前驗證快照（程式 commit `14a0ba8`）
+
+- [x] `npm run lint -- --no-cache`、`npm run typecheck`、`npm test` 及 `npm run build` 通過
+- [x] `npm test` 實際輸出為 21 個 Vitest test files、377 項測試；數字只代表 2026-08-02 的 `14a0ba8`，日後以指令輸出為準
+- [x] 一般 Playwright E2E 18／18 通過並正常關閉 dev server；PWA E2E 7／7 通過並釋放測試 ports
+- [x] 修正 Windows 下 Playwright 內建 `webServer` 完成測試後不退出，改用既有明確 process lifecycle
+- [x] 修正 service-worker waiting → activate 交接期間首個 navigation 可被 Chromium abort 的 E2E race
+- [x] 確認 runtime 只有 README 列出的三個版本化、非敏感 localStorage key，沒有 runtime sessionStorage
+- [x] 分析行尾 warning 為本機 `core.autocrlf=true` 加上 repository 缺少政策；`git add --renormalize --dry-run .` 會觸及 169 個 paths，因此只加入 LF `.gitattributes`，不執行全庫 renormalization
+- [ ] Android Chrome 安裝流程、iPhone Safari 分享／加入主畫面及正式 HTTPS deployment 仍需真人實機驗證
+
+## 2026-08-02：42 張響應式天氣背景矩陣
+
+- [x] 建立 7 種場景 × 3 個時段 × 手機／桌面兩種原生構圖，共 42 個唯一 WebP 路徑
+- [x] 以同一維港視點生成並逐組檢查天空、天際線、水面、天氣語義及安全文字區
+- [x] 擴充 `WeatherPeriod` 為 `day | dusk | night`，以香港座標純函式計算日出、日落及 civil dusk
+- [x] 以原生 `<picture>` 及 64rem media query 選擇方向，每個交叉淡入層自行持有圖片
+- [x] 移除背景 `background` shorthand，圖片不套 blur，場景色調只由低透明 pseudo-element 疊加
+- [x] Weather Scene Preview 覆蓋全部 21 個場景／時段組合
+- [x] 靜態測試覆蓋 42 個唯一且存在的路徑；單元測試覆蓋夏至、冬至、一般日期、邊界及無效時間
+- [x] 硬性驗收門檻為 42 個唯一 WebP 路徑、原生 16:9／9:16 構圖、文字安全區、場景語義及 responsive 選圖；現有資產與測試已通過
+- [x] 可接受限制為 desktop 1659–1660×948、mobile 941×1672；1792×1024／1024×1792 只保留為日後重新生成原生細節時的設計目標，不以插值放大冒充達標
+- [x] 完成 390×844、768×1024、1280×720、1920×1080 E2E／視覺驗收及全部品質閘門
 
 ## Phase 1：API 探測、專案結構與決策文件
 
@@ -15,7 +39,7 @@
 - [x] 建立並自我審查 MVP 架構設計
 - [x] 建立 Next.js、TypeScript strict、ESLint、Vitest 專案基線
 - [x] 建立分離的 API、validation、normalization、location、freshness、scoring、UI 目錄（後續 phase 隨實作加入專責檔案）
-- [x] Phase 1 驗證：基線 lint、test 與 build 通過（1 test）
+- [x] Phase 1 驗證：當時基線 lint、test 與 build 通過（歷史紀錄；目前數量見頁首快照）
 
 ## Phase 2：API clients、runtime validation、normalization 與 fixtures
 
@@ -63,7 +87,7 @@
 - [x] 執行 accessibility 與 responsive 結構檢查；自動截圖工具限制已記錄於 `docs/QA_REPORT.md`
 - [x] 完成 README：本機啟動、測試、production build、免費部署與資料限制
 - [x] 執行 `npm run lint`（通過）
-- [x] 執行 `npm test`（14 files、251 tests 通過）
+- [x] 執行 `npm test`（當時通過；目前數量見頁首快照）
 - [x] 執行 `npm run build`（production build 通過）
 - [x] 記錄實際結果與已知限制於 `docs/QA_REPORT.md`
 
@@ -74,18 +98,18 @@
 - [x] 確保 timeout、HTTP、格式、網絡及非 cleanup AbortError 都會進入可重試的完整失敗狀態
 - [x] 為 JavaScript 未接管頁面的情況提供可操作的整頁重載後備
 - [x] 新增 browser route client 8 項回歸測試，且不依賴 live API
-- [x] 執行 `npm run lint`、`npm test` 與 `npm run build`；15 files、259 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm test` 與 `npm run build`；當時全部通過（目前數量見頁首快照）
 
 ## 2026-07-16：專案驗收及修復複核
 
 - [x] 重新完整閱讀 `AGENTS.md`、`PLANS.md`、`README.md` 及 `docs/` 全部文件
 - [x] 檢查 `package.json` scripts、實作分層、測試案例及 Git 工作目錄；沒有重新初始化、重寫或建立 commit
-- [x] 依指定次序執行 `npm run lint`、`npm test`、`npm run build`；0 lint error、15 files／259 tests 及 production build 全部通過；另執行 `npm run typecheck` 通過
+- [x] 依指定次序執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；當時全部通過（目前數量見頁首快照）
 - [x] 以 2026-07-16 真實 HTTP 請求重新探測 HKO `rhrread`、`warnsum`、`flw` 及環保署 AQHI；四個官方 JSON 均成功解析
 - [x] 以具外網權限的 production server 端到端呼叫 `/api/outlook?location=hong-kong`；四來源均為 `ok`，證實 runtime 並非使用 fixture／static mock
 - [x] 以無外網 production server 實測四來源全失敗；畫面收斂至不顯示分數的完整失敗狀態，並提供重試、HKO 出口及逐來源失敗標示
 - [x] 複核 partial failure、missing、malformed、stale、future timestamp、warning unavailable 及 stale 不計分測試
-- [x] 搜尋 runtime 原始碼，確認沒有 localStorage、sessionStorage、database、analytics、API key 或精確位置傳送／持久化
+- [x] 搜尋 runtime 原始碼，確認精確位置不傳送／持久化，沒有 sessionStorage、database、analytics 或 API key；目前三個非敏感 localStorage key 已列於 README
 - [x] 以 360 × 800 瀏覽器 viewport 實測：無水平 overflow、所有按鈕至少 44px、首屏完整顯示標題／更新時間／模式／分數／結論／摘要／建議
 - [x] 實測十八區清單、選擇中西區、切回香港整體及三種活動模式即時重新計分
 - [x] 以 1280 × 720 viewport 實測桌面四欄資料卡且無水平 overflow；複核 dark mode 及 reduced-motion CSS
@@ -98,7 +122,7 @@
 - [x] 複核四個政府 API 的 8 秒 timeout、並行 failure isolation、短期 instance-memory cache 及錯誤分類
 - [x] 以 Vercel／Next.js 官方文件核對 Git 匯入、Node.js、Function duration、region、Hobby fair use 及網站操作流程
 - [x] 擴充 README：免費方案前提、完整 Vercel 匯入設定、`hkg1`、部署後 smoke test、runtime 與 cache 限制
-- [x] 執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`；15 files／259 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`；當時全部通過（目前數量見頁首快照）
 - [x] 核對最終 Git 差異只包含部署文件，且沒有部署、上傳或建立 commit
 
 ## 2026-07-16：首頁 UI／UX 重設計
@@ -110,7 +134,7 @@
 - [x] 以最新 Web Interface Guidelines 審核 UI 並修復重要問題
 - [x] 依 Vercel React Best Practices 複核元件、重繪及 bundle 行為
 - [x] 驗收 desktop、360px mobile、鍵盤、focus、dark mode 及 reduced motion
-- [x] 執行 `npm run lint`、`npm test`、`npm run build`；0 lint error、15 files／260 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm test`、`npm run build`；當時全部通過（目前數量見頁首快照）
 
 ## 2026-07-16：實際天氣驅動的沉浸式 WeatherScene
 
@@ -147,7 +171,7 @@
 - [x] 修正四張純資訊卡不必要的 `tabIndex=0`，並恢復 skip-link 目標的可見 focus indicator
 - [x] 實測 360×800、390×844、768×1024、1440×900；無水平 overflow，控制項至少 44px，主要結果在手機首屏內
 - [x] 複核鍵盤原生控制、focus、螢幕閱讀器名稱、heading／main 語意、文字對比及 console；沒有未命名控制、正 tabindex 或 console error／warning
-- [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；16 files／287 tests、production build 及 TypeScript 全部通過
+- [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；當時全部通過（目前數量見頁首快照）
 - [x] 沒有建立 commit、推送、部署或上傳 GitHub
 
 ## 2026-07-27：Production-readiness audit
@@ -199,3 +223,103 @@
 - [x] 驗證離線及失敗時不 render 任何舊天氣、評分、建議或資料驅動場景
 - [x] 建立 production PWA E2E、同 URL worker v1→v2 更新 proxy 及 CI coverage
 - [x] 更新決策、README、QA 文件並執行完整品質閘門與最終 diff review
+
+## 2026-08-01：Apple 風格天氣決策介面重構
+
+- [x] 重讀產品規格、API 來源、驗收準則、實作計劃及技術決策
+- [x] 以真實請求重驗 HKO 三個 JSON、AQHI 及降雨臨近預報 CSV 格式
+- [x] 把 Hero 改為大型結論優先、小型語意圖標及外出指數，保留可存取 progressbar
+- [x] 建立緊湊地區 pill、44px 動態圖標按鈕及薄型三模式 segmented control
+- [x] 把降雨改為四段真實資料主卡，並把體感、UV、AQHI 收斂成三格摘要
+- [x] 把生效警告改為條件式雙格，未確認警告仍顯示審慎提示
+- [x] 把預報／提示及來源詳情下移至微型原生 disclosure
+- [x] 驗證 320×568、360×800、390×844、416×896、768×1024、1280×720 的首屏層級、雙欄與水平 overflow
+- [x] 更新 UI／E2E 回歸測試並執行全部品質閘門
+- [x] 完成最終 diff review；不建立 Git commit
+
+## 2026-08-02：背景優先視覺修正
+
+- [x] 把地區與目前活動合併成單一緊湊 pill，其他活動及地區選擇收進同一二級選單
+- [x] 移除 Hero 重複狀態列，縮小標題、結論、提示、建議及資料卡文字與間距
+- [x] 加入原創香港海港背景的正常／暴雨兩個版本，沿用資料驅動 WeatherScene 動畫
+- [x] 更新靜態 UI 與 E2E，覆蓋二級選單及精簡後的 Hero 層級
+- [x] 執行 390×844 視覺檢查及完整品質閘門
+- [x] 把照片移至穩定 WeatherBackground 基底，場景切換層只保留透明色調
+- [x] 降低全頁遮罩、環境光與主要資料卡的不透明度
+- [x] 驗證正常／暴雨圖片切換、390×844 首屏及完整品質閘門
+
+## 2026-08-02：Production-readiness audit 與高優先級修正
+
+- [x] 重讀產品規格、API 來源、驗收準則及完整實作計劃
+- [x] 執行當時未修改基準的 lint、typecheck、test、coverage 及 production build（目前數量見頁首快照）
+- [x] 以真實 Node fetch 及 production `/api/outlook` 驗證五個官方來源，定位全來源失敗為受限 dev server 無法出站
+- [x] 按嚴重程度審核功能、型別、API、錯誤、效能、安全、無障礙、responsive、測試、重複／未使用程式碼、dependencies 及 README
+- [x] 修正 JSON response byte limit、production dependency advisories、全域安全標頭、內容對比及外部 E2E origin
+- [x] 執行修正後 lint、typecheck、test、build、npm audit 及 E2E
+
+## 2026-08-02：降雨臨近預報快取與提示修正
+
+- [x] 讓 nowcast cache 同時受 10 分鐘 soft TTL 及來源更新後 24 分鐘 hard expiry 約束
+- [x] refresh 失敗時只沿用仍在 24 分鐘內的已驗證 snapshot
+- [x] 區分 stale、failed、malformed 提示，並抑制不影響四段預報的非關鍵全頁警示
+- [x] 補齊 cache、fallback、狀態文案及 E2E 回歸測試
+- [x] 更新 API／決策文件並執行完整品質閘門
+
+## 2026-08-02：降雨 nowcast 官方壓縮來源修正
+
+- [x] 重現 2.7 MB CSV 在 8 秒 deadline 長期逾時，量度 60 秒只取得約 475 KB
+- [x] 驗證同一官方 CSDI dataset 的 16 KB ZIP 及十七欄、四時段資料契約
+- [x] 以 Node 內建 zlib 替換 transport，保留壓縮／解壓／列數／deadline 邊界
+- [x] 補齊 ZIP、CSDI CSV、cache、損壞及超限回歸測試
+- [x] 執行真實本機 route、UI、lint、typecheck、test、build 及最終 diff review
+
+## 2026-08-02：桌面載入版面位移修正
+
+- [x] 量度載入前後 Header 約 11 px 位移，確認與 21 px 垂直捲軸的一半吻合
+- [x] 在桌面 viewport 以根元素原生 `scrollbar-gutter: stable` 預留捲軸空間，手機保留完整可用寬度
+- [x] 在既有 responsive E2E 加入桌面穩定 scrollbar gutter 及各 viewport 無溢位回歸檢查
+- [x] 執行當時 lint、typecheck、test、build、目標 E2E 及最終 diff review；development-only scene preview 不納入 production server 驗收（目前結果見頁首快照）
+
+## 2026-08-02：地區膠囊原地展開選擇介面
+
+- [x] 把活動模式及地區選擇移入同一個地區控制表面
+- [x] 以絕對定位覆蓋下方 UI，並在桌面及手機橫跨內容區
+- [x] 加入輕微遮罩、再次點擊、遮罩點擊及 Escape 關閉行為
+- [x] 保留鍵盤焦點、reduced motion、選擇後收起及既有資料更新行為
+- [x] 補充元件／E2E 回歸測試並執行完整品質閘門
+
+## 2026-08-02：靈動島式膠囊形變動畫
+
+- [x] 統一關閉膠囊與展開卡片的外框、背景及陰影元素
+- [x] 以四階段狀態及原生 Web Animations API 實作尺寸、圓角與輕微回彈
+- [x] 讓選項延遲進場、收起時保留 DOM 至反向動畫完成
+- [x] 支援快速反向、Escape／遮罩／完成選擇及 reduced-motion fallback
+- [x] 補充動畫中段、反向操作及 reduced-motion E2E 並執行完整品質閘門
+
+## 2026-08-02：定位圖標附近圓角閃爍修正
+
+- [x] 把關閉膠囊與展開面板的外框圓角統一為實際 25px
+- [x] 從 Web Animations 尺寸形變移除 `999px → 20px` 圓角插值
+- [x] 讓鍵盤焦點環在所有動畫階段都由同一外框持有
+- [x] 驗證開啟、收起、快速反向、reduced motion 及完整品質閘門
+
+## 2026-08-02：天氣背景實際效能審查
+
+- [x] 以 production build 及 Playwright 冷快取量測 390×844、430×932、1440×900、1920×1080，確認 responsive `<picture>` 不會交叉下載手機／桌面資產，也沒有 preload 42 張
+- [x] 發現首頁先下載 neutral 再下載實際場景；手機為 654,670 transferred bytes，1440 桌面為 611,790 bytes
+- [x] 資料 ready 前改用既有深藍純色底，首次載入收斂為目前場景的一張圖片；手機減少 315,306 transferred bytes，1440 桌面減少 303,092 bytes
+- [x] 場景切換只新增一張目前 viewport 資產；相同資產再次導覽只需約 300 bytes revalidation，不會重傳完整圖片
+- [x] Slow-network 量測中主要內容可先 ready、互動維持 55 ms；背景不阻塞互動，亦不是 CLS 來源
+- [x] 圖片失敗時隱藏破圖並保留既有深藍純色 fallback；加入單一首載與失敗 fallback E2E 回歸測試
+- [x] 實際檢查手機、1440 及 1920 截圖；1920 約 1.15 倍放大但無肉眼可見模糊，因此不改 WebP quality、像素尺寸或 42 張資產
+- [x] 執行 lint、typecheck、377 項 Vitest、production build、6 項效能 audit 及 19 項 production E2E；development-only scene preview 按設計不納入 production server
+
+## 2026-08-02：恢復載入期間的預設背景
+
+- [x] 按產品選擇恢復 loading／safe 狀態的 responsive neutral WebP 及 ready 場景重新掛載
+- [x] 保留圖片失敗時的深藍純色 fallback 與破圖隱藏，不修改任何 WebP
+- [x] 延遲 mock API 驗證手機及桌面依序顯示 neutral → 實際場景
+- [x] Production Playwright 實測 390×844、430×932 均只載入兩張 mobile 圖，合計 654,670 transferred／654,070 resource bytes
+- [x] Production Playwright 實測 1440×900 只載入兩張 desktop 圖，合計 611,790 transferred／611,190 resource bytes
+- [x] 確認沒有手機／桌面交叉下載，也沒有預載其餘背景矩陣
+- [x] 執行 lint、typecheck、377 項 Vitest、production build、3 項恢復量測及 20 項 production E2E；全部通過

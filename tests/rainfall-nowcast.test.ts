@@ -8,6 +8,7 @@ import {
   normalizeRainfallNowcast,
 } from "@/lib/normalization/rainfall-nowcast";
 import {
+  CSDI_RAINFALL_NOWCAST_HEADER,
   parseRainfallNowcastCsv,
   RAINFALL_NOWCAST_HEADER,
 } from "@/lib/validation/rainfall-nowcast";
@@ -82,6 +83,60 @@ describe("香港天文台格點降雨 CSV", () => {
       { status: "valid", value: 0.25 },
       { status: "valid", value: 0.28 },
     ]);
+  });
+
+  it("解析 CSDI 壓縮檔內的十七欄官方格式", () => {
+    const rows = FIXTURE.trim()
+      .split("\n")
+      .slice(1)
+      .map((line) => {
+        const [updated, ending, latitude, longitude, rainfall] =
+          line.split(",");
+        return [
+          updated.slice(0, 4),
+          Number(updated.slice(4, 6)),
+          Number(updated.slice(6, 8)),
+          Number(updated.slice(8, 10)),
+          Number(updated.slice(10, 12)),
+          "",
+          "UTC+8",
+          ending.slice(0, 4),
+          Number(ending.slice(4, 6)),
+          Number(ending.slice(6, 8)),
+          Number(ending.slice(8, 10)),
+          Number(ending.slice(10, 12)),
+          "",
+          "UTC+8",
+          latitude,
+          longitude,
+          rainfall,
+        ].join(",");
+      });
+    const parsed = expectParsed(
+      [CSDI_RAINFALL_NOWCAST_HEADER.join(","), ...rows].join("\n"),
+    );
+
+    expect(parsed.value.updatedAt).toBe("2026-07-30T09:12:00.000Z");
+    expect(parsed.value.cells).toHaveLength(2);
+    expect(parsed.value.cells[0].periodValues[0]).toEqual({
+      status: "valid",
+      value: 0.21,
+    });
+
+    const latestObservedOrder = [
+      9, 8, 7, 10, 11, 12, 13, 16, 14, 15, 2, 1, 0, 3, 4, 5, 6,
+    ];
+    const reorder = (line: string) => {
+      const fields = line.split(",");
+      return latestObservedOrder.map((index) => fields[index]).join(",");
+    };
+    const reordered = expectParsed(
+      [
+        reorder(CSDI_RAINFALL_NOWCAST_HEADER.join(",")),
+        ...rows.map(reorder),
+      ].join("\n"),
+    );
+    expect(reordered.value).toEqual(parsed.value);
   });
 
   it("只保留十八區各一個代表格點及全港四段衍生值", () => {

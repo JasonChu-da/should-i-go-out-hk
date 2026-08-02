@@ -1,3 +1,5 @@
+import { inflateRawSync } from "node:zlib";
+
 import type { FetchImplementation } from "@/lib/api/client";
 import {
   API_CACHE_TTL_MS,
@@ -7,17 +9,24 @@ import {
   buildRainfallNowcastSnapshot,
   type ParsedRainfallNowcastSnapshot,
 } from "@/lib/normalization/rainfall-nowcast";
+import {
+  assessFreshness,
+  FRESHNESS_THRESHOLDS_MS,
+} from "@/lib/freshness";
 import { RainfallNowcastCsvParser } from "@/lib/validation/rainfall-nowcast";
 
 export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+export const MAX_COMPRESSED_RESPONSE_BYTES = 512 * 1024;
 export const MAX_DATA_ROWS = 100_000;
 export const RAINFALL_NOWCAST_REQUEST_TIMEOUT_MS = 8_000;
 
 const ALLOWED_CONTENT_TYPES = new Set([
-  "text/csv",
-  "text/plain",
+  "application/zip",
   "application/octet-stream",
 ]);
+const ZIP_LOCAL_FILE_SIGNATURE = 0x04034b50;
+const ZIP_DEFLATE_METHOD = 8;
+const ZIP_ENTRY_NAME = "gridded_rainfall_nowcast.csv";
 
 export type RainfallNowcastErrorType =
   | "timeout"
@@ -91,6 +100,25 @@ function getTime(now: () => number | Date): number {
   return value instanceof Date ? value.getTime() : value;
 }
 
+function isCacheSourceFresh(entry: CacheEntry, now: number): boolean {
+  return (
+    assessFreshness(
+      entry.data.updatedAt,
+      now,
+      FRESHNESS_THRESHOLDS_MS.rainfallNowcast,
+    ) === "fresh"
+  );
+}
+
+function cachedSuccess(entry: CacheEntry): RainfallNowcastFetchSuccess {
+  return {
+    ok: true,
+    data: entry.data,
+    retrievedAt: entry.retrievedAt,
+    fromCache: true,
+  };
+}
+
 function isAllowedContentType(contentType: string | null): boolean {
   if (!contentType) return false;
   return contentType.split(",").some((part) => {
@@ -107,6 +135,71 @@ function isAbortError(error: unknown): boolean {
 }
 
 class InvalidRainfallNowcastDataError extends Error {}
+class RainfallNowcastTooLargeError extends Error {}
+
+function extractCsvFromZip(zipBytes: Uint8Array): Uint8Array {
+  if (zipBytes.byteLength < 30) {
+    throw new InvalidRainfallNowcastDataError();
+  }
+
+  const view = new DataView(
+    zipBytes.buffer,
+    zipBytes.byteOffset,
+    zipBytes.byteLength,
+  );
+  if (view.getUint32(0, true) !== ZIP_LOCAL_FILE_SIGNATURE) {
+    throw new InvalidRainfallNowcastDataError();
+  }
+
+  const flags = view.getUint16(6, true);
+  const method = view.getUint16(8, true);
+  const compressedSize = view.getUint32(18, true);
+  const uncompressedSize = view.getUint32(22, true);
+  const fileNameLength = view.getUint16(26, true);
+  const extraLength = view.getUint16(28, true);
+  const dataStart = 30 + fileNameLength + extraLength;
+  const dataEnd = dataStart + compressedSize;
+
+  if (compressedSize > MAX_COMPRESSED_RESPONSE_BYTES) {
+    throw new RainfallNowcastTooLargeError();
+  }
+  if (
+    flags !== 0 ||
+    method !== ZIP_DEFLATE_METHOD ||
+    dataStart > zipBytes.byteLength ||
+    dataEnd > zipBytes.byteLength
+  ) {
+    throw new InvalidRainfallNowcastDataError();
+  }
+  if (uncompressedSize > MAX_RESPONSE_BYTES) {
+    throw new RainfallNowcastTooLargeError();
+  }
+
+  let fileName: string;
+  try {
+    fileName = new TextDecoder("utf-8", { fatal: true }).decode(
+      zipBytes.subarray(30, 30 + fileNameLength),
+    );
+  } catch {
+    throw new InvalidRainfallNowcastDataError();
+  }
+  if (fileName !== ZIP_ENTRY_NAME) {
+    throw new InvalidRainfallNowcastDataError();
+  }
+
+  let csvBytes: Uint8Array;
+  try {
+    csvBytes = inflateRawSync(zipBytes.subarray(dataStart, dataEnd), {
+      maxOutputLength: MAX_RESPONSE_BYTES,
+    });
+  } catch {
+    throw new InvalidRainfallNowcastDataError();
+  }
+  if (csvBytes.byteLength !== uncompressedSize) {
+    throw new InvalidRainfallNowcastDataError();
+  }
+  return csvBytes;
+}
 
 async function requestRainfallNowcast(
   fetchImpl: FetchImplementation,
@@ -152,7 +245,7 @@ async function requestRainfallNowcast(
     const contentLength = Number(response.headers.get("content-length"));
     if (
       Number.isFinite(contentLength) &&
-      contentLength > MAX_RESPONSE_BYTES
+      contentLength > MAX_COMPRESSED_RESPONSE_BYTES
     ) {
       const cancelPromise = response.body?.cancel();
       controller.abort();
@@ -162,29 +255,8 @@ async function requestRainfallNowcast(
 
     if (!response.body) return failure("body");
     reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8", { fatal: true });
-    const parser = new RainfallNowcastCsvParser();
+    const chunks: Uint8Array[] = [];
     let bytesRead = 0;
-    let pending = "";
-
-    const pushText = (text: string): boolean => {
-      pending += text;
-      let newlineIndex = pending.indexOf("\n");
-
-      while (newlineIndex !== -1) {
-        parser.pushLine(pending.slice(0, newlineIndex));
-        pending = pending.slice(newlineIndex + 1);
-        if (
-          parser.hasFatalError ||
-          parser.dataRowCount > MAX_DATA_ROWS
-        ) {
-          return false;
-        }
-        newlineIndex = pending.indexOf("\n");
-      }
-
-      return true;
-    };
 
     while (true) {
       const chunk = await Promise.race([reader.read(), timeoutPromise]);
@@ -192,45 +264,45 @@ async function requestRainfallNowcast(
       if (chunk.done) break;
 
       bytesRead += chunk.value.byteLength;
-      if (bytesRead > MAX_RESPONSE_BYTES) {
+      if (bytesRead > MAX_COMPRESSED_RESPONSE_BYTES) {
         const cancelPromise = reader.cancel();
         controller.abort();
         await cancelPromise.catch(() => undefined);
         return failure("too-large");
       }
-
-      let decoded = "";
-      try {
-        decoded = decoder.decode(chunk.value, { stream: true });
-      } catch {
-        throw new InvalidRainfallNowcastDataError();
-      }
-      if (!pushText(decoded)) {
-        const cancelPromise = reader.cancel();
-        controller.abort();
-        await cancelPromise.catch(() => undefined);
-        return failure(
-          parser.dataRowCount > MAX_DATA_ROWS
-            ? "too-large"
-            : "invalid-data",
-        );
-      }
+      chunks.push(chunk.value);
     }
 
-    let trailingText = "";
+    const zipBytes = new Uint8Array(bytesRead);
+    let offset = 0;
+    for (const chunk of chunks) {
+      zipBytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    let csvBytes: Uint8Array;
     try {
-      trailingText = decoder.decode();
+      csvBytes = extractCsvFromZip(zipBytes);
+    } catch (error) {
+      if (error instanceof RainfallNowcastTooLargeError) {
+        return failure("too-large");
+      }
+      throw error;
+    }
+
+    let csv: string;
+    try {
+      csv = new TextDecoder("utf-8", { fatal: true }).decode(csvBytes);
     } catch {
       throw new InvalidRainfallNowcastDataError();
     }
-    if (!pushText(trailingText)) {
-      return failure(
-        parser.dataRowCount > MAX_DATA_ROWS
-          ? "too-large"
-          : "invalid-data",
-      );
+    const parser = new RainfallNowcastCsvParser();
+    for (const line of csv.split("\n")) {
+      parser.pushLine(line);
+      if (parser.hasFatalError || parser.dataRowCount > MAX_DATA_ROWS) {
+        break;
+      }
     }
-    if (pending !== "") parser.pushLine(pending);
     if (parser.dataRowCount > MAX_DATA_ROWS) return failure("too-large");
 
     const parsed = parser.finish();
@@ -252,11 +324,21 @@ async function requestRainfallNowcast(
     };
 
     if (ttlMs > 0) {
-      responseCache.set(cacheKey, {
-        data: snapshot.value,
-        retrievedAt,
-        expiresAt: retrievedAtMs + ttlMs,
-      });
+      const sourceExpiresAt =
+        Date.parse(snapshot.value.updatedAt) +
+        FRESHNESS_THRESHOLDS_MS.rainfallNowcast;
+      const expiresAt = Math.min(
+        retrievedAtMs + ttlMs,
+        sourceExpiresAt,
+      );
+
+      if (expiresAt > retrievedAtMs) {
+        responseCache.set(cacheKey, {
+          data: snapshot.value,
+          retrievedAt,
+          expiresAt,
+        });
+      }
     }
     return result;
   } catch (error) {
@@ -290,18 +372,17 @@ export async function fetchRainfallNowcast(
   );
   const cacheKey = options.cacheKey ?? HKO_RAINFALL_NOWCAST_ENDPOINT;
 
+  let cached: CacheEntry | undefined;
   if (ttlMs > 0) {
     const currentTime = getTime(now);
-    const cached = responseCache.get(cacheKey);
-    if (cached && currentTime < cached.expiresAt) {
-      return {
-        ok: true,
-        data: cached.data,
-        retrievedAt: cached.retrievedAt,
-        fromCache: true,
-      };
+    cached = responseCache.get(cacheKey);
+    if (cached && !isCacheSourceFresh(cached, currentTime)) {
+      responseCache.delete(cacheKey);
+      cached = undefined;
     }
-    if (cached) responseCache.delete(cacheKey);
+    if (cached && currentTime < cached.expiresAt) {
+      return cachedSuccess(cached);
+    }
   }
 
   const inFlight = inFlightRequests.get(cacheKey);
@@ -313,7 +394,16 @@ export async function fetchRainfallNowcast(
     timeoutMs,
     ttlMs,
     cacheKey,
-  );
+  ).then((result) => {
+    if (result.ok || !cached) return result;
+    if (isCacheSourceFresh(cached, getTime(now))) {
+      return cachedSuccess(cached);
+    }
+    if (responseCache.get(cacheKey) === cached) {
+      responseCache.delete(cacheKey);
+    }
+    return result;
+  });
   inFlightRequests.set(cacheKey, request);
   try {
     return await request;

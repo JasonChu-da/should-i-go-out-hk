@@ -7,52 +7,81 @@ import {
   usePrefersReducedMotion,
 } from "@/components/weather-scene/MotionToggle";
 import { WeatherScene } from "@/components/weather-scene/WeatherScene";
+import {
+  WEATHER_PERIODS,
+  WEATHER_SCENES,
+} from "@/lib/weather-scene/background-assets";
 import type {
   WeatherPeriod,
   WeatherSceneName,
   WeatherSceneResult,
 } from "@/lib/weather-scene/types";
 
-type PreviewSceneId =
-  | "clear-day"
-  | "clear-night"
-  | "cloudy-day"
-  | "cloudy-night"
-  | "overcast"
-  | "rain-light"
-  | "rain-heavy"
-  | "storm"
-  | "hot-day"
-  | "neutral"
-  | "reduced-motion";
-
-const PREVIEW_SCENES: ReadonlyArray<{
-  id: PreviewSceneId;
+interface PreviewScene {
+  id: string;
   label: string;
   period: WeatherPeriod;
   precipitation: WeatherSceneResult["precipitation"];
   scene: WeatherSceneName;
   severity: WeatherSceneResult["severity"];
   forceReducedMotion?: boolean;
-}> = [
-  { id: "clear-day", scene: "clear", period: "day", label: "晴朗日間", precipitation: "none", severity: "normal" },
-  { id: "clear-night", scene: "clear", period: "night", label: "晴朗夜間", precipitation: "none", severity: "normal" },
-  { id: "cloudy-day", scene: "cloudy", period: "day", label: "多雲日間", precipitation: "none", severity: "normal" },
-  { id: "cloudy-night", scene: "cloudy", period: "night", label: "多雲夜間", precipitation: "none", severity: "normal" },
-  { id: "overcast", scene: "overcast", period: "day", label: "陰天", precipitation: "none", severity: "normal" },
-  { id: "rain-light", scene: "rain", period: "day", label: "小雨", precipitation: "light", severity: "normal" },
-  { id: "rain-heavy", scene: "rain", period: "night", label: "大雨", precipitation: "heavy", severity: "caution" },
-  { id: "storm", scene: "storm", period: "night", label: "雷暴", precipitation: "heavy", severity: "danger" },
-  { id: "hot-day", scene: "hot", period: "day", label: "炎熱日間", precipitation: "none", severity: "caution" },
-  { id: "neutral", scene: "neutral", period: "night", label: "中性資料狀態", precipitation: "none", severity: "caution" },
-  { id: "reduced-motion", scene: "clear", period: "night", label: "減少動態", precipitation: "none", severity: "normal", forceReducedMotion: true },
+}
+
+const SCENE_LABELS: Record<WeatherSceneName, string> = {
+  clear: "晴朗",
+  cloudy: "多雲",
+  overcast: "陰天",
+  rain: "下雨",
+  storm: "暴風",
+  hot: "炎熱",
+  neutral: "中性資料狀態",
+};
+const PERIOD_LABELS: Record<WeatherPeriod, string> = {
+  day: "白天",
+  dusk: "黃昏",
+  night: "黑夜",
+};
+
+function previewValues(scene: WeatherSceneName): Pick<
+  PreviewScene,
+  "precipitation" | "severity"
+> {
+  if (scene === "storm") return { precipitation: "heavy", severity: "danger" };
+  if (scene === "rain") return { precipitation: "medium", severity: "caution" };
+  if (scene === "hot" || scene === "neutral") {
+    return { precipitation: "none", severity: "caution" };
+  }
+  return { precipitation: "none", severity: "normal" };
+}
+
+const MATRIX_SCENES: PreviewScene[] = WEATHER_PERIODS.flatMap((period) =>
+  WEATHER_SCENES.map((scene) => ({
+    id: `${scene}-${period}`,
+    label: `${SCENE_LABELS[scene]}・${PERIOD_LABELS[period]}`,
+    period,
+    scene,
+    ...previewValues(scene),
+  })),
+);
+const PREVIEW_SCENES: readonly PreviewScene[] = [
+  ...MATRIX_SCENES,
+  {
+    id: "reduced-motion",
+    scene: "clear",
+    period: "night",
+    label: "減少動態",
+    precipitation: "none",
+    severity: "normal",
+    forceReducedMotion: true,
+  },
 ];
 
 export function WeatherScenePreview() {
-  const [sceneName, setSceneName] = useState<PreviewSceneId>("clear-day");
+  const [sceneName, setSceneName] = useState("clear-day");
   const [motionEnabled, setMotionEnabled] = useMotionPreference();
   const systemReducedMotion = usePrefersReducedMotion();
-  const preview = PREVIEW_SCENES.find((item) => item.id === sceneName) ?? PREVIEW_SCENES[0];
+  const preview =
+    PREVIEW_SCENES.find((item) => item.id === sceneName) ?? PREVIEW_SCENES[0];
   const reducedMotion = systemReducedMotion || Boolean(preview.forceReducedMotion);
   const scene: WeatherSceneResult = {
     scene: preview.scene,

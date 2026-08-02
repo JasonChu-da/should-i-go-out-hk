@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 
+const devPort = process.env.E2E_PORT ?? "3100";
 const internalPort = process.env.PWA_INTERNAL_PORT ?? "3201";
 const proxyPort = process.env.PWA_PROXY_PORT ?? "3200";
+const devOrigin = `http://127.0.0.1:${devPort}`;
 const internalOrigin = `http://127.0.0.1:${internalPort}`;
 const proxyOrigin = `http://127.0.0.1:${proxyPort}`;
 
@@ -70,7 +72,30 @@ async function stop(processState) {
   }
 }
 
-export default async function globalSetup() {
+async function setupDevServer() {
+  if (process.env.PLAYWRIGHT_BASE_URL) return;
+  if (await isReachable(devOrigin)) {
+    throw new Error(`E2E requires unused port ${devPort}.`);
+  }
+
+  const next = start([
+    "node_modules/next/dist/bin/next",
+    "dev",
+    "--hostname",
+    "127.0.0.1",
+    "--port",
+    devPort,
+  ]);
+  try {
+    await waitFor(devOrigin, next, "Next.js E2E dev server", 120_000);
+  } catch (error) {
+    await stop(next);
+    throw error;
+  }
+  return () => stop(next);
+}
+
+async function setupPwaServers() {
   if (
     (await isReachable(internalOrigin)) ||
     (await isReachable(`${proxyOrigin}/__pwa__/health`))
@@ -112,4 +137,10 @@ export default async function globalSetup() {
     await stop(proxy);
     await stop(next);
   };
+}
+
+export default function globalSetup(config) {
+  return config.projects.some(({ name }) => name === "pwa-chromium")
+    ? setupPwaServers()
+    : setupDevServer();
 }

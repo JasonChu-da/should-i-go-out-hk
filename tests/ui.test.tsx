@@ -11,6 +11,7 @@ import { ModeTabs } from "@/components/ModeTabs";
 import { ResultHero } from "@/components/ResultHero";
 import { SourceDetails } from "@/components/SourceDetails";
 import { CompleteFailure, LoadingState } from "@/components/States";
+import { ActiveWarnings, ForecastDetails } from "@/components/WarningsPanel";
 import { WeatherScene } from "@/components/weather-scene/WeatherScene";
 import { WeatherScenePreview } from "@/components/weather-scene/WeatherScenePreview";
 import type { SourceMeta } from "@/lib/domain/outlook";
@@ -53,8 +54,8 @@ describe("mobile UI semantics", () => {
     expect(html).toContain("正在整理最新官方資料…");
     expect(html).toContain("精確位置不會儲存或傳送");
     expect(html).toContain("一般外出");
-    expect(html).toContain("跑步／踩單車");
-    expect(html).toContain("晾衫");
+    expect(html).not.toContain("跑步／踩單車");
+    expect(html).not.toContain("晾衫");
     expect(html).not.toContain("<input");
     expect(html).toContain("跳至主要內容");
   });
@@ -70,19 +71,28 @@ describe("mobile UI semantics", () => {
     expect(html).not.toContain("<input");
   });
 
-  it("links the compact location control to the separate picker", () => {
+  it("links the compact location control to its expanded picker", () => {
     const html = renderToStaticMarkup(
       <LocationControls
         locationLabel="香港整體"
+        modeLabel="一般外出"
         locationNote="非地區化結果。"
         status="denied"
-        pickerOpen
+        pickerPhase="open"
         onTogglePicker={vi.fn()}
-      />,
+      >
+        <div id="quick-controls">選擇界面</div>
+      </LocationControls>,
     );
 
+    expect(html).toContain('data-open="true"');
+    expect(html).toContain('data-phase="open"');
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('aria-controls="district-picker"');
+    expect(html).toContain('aria-controls="quick-controls"');
+    expect(html).toContain('id="quick-controls"');
+    expect(html).toContain("選擇界面");
+    expect(html).toContain("香港整體");
+    expect(html).toContain("一般外出");
     expect(html).toContain("位置權限已被拒絕");
   });
 
@@ -108,9 +118,13 @@ describe("mobile UI semantics", () => {
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain("外出分數 7 分，滿分 10 分");
     expect(html).toContain("資料有限");
-    expect(html).toContain('data-status="limited"');
+    expect(html).not.toContain('class="status-chip"');
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-valuenow="7"');
+    expect(html).toContain("外出指數");
+    expect(html.indexOf("可以出門，但需要準備")).toBeLessThan(
+      html.indexOf("外出指數"),
+    );
   });
 
   it("provides understandable loading and complete-failure actions", () => {
@@ -130,11 +144,11 @@ describe("mobile UI semantics", () => {
 
     expect(html).toContain("5 個資料來源可用");
     expect(html).toContain("最新更新 13:02");
-    expect(html).toContain("查看詳情");
+    expect(html).toContain("utility-summary-action\">查看");
     expect((html.match(/<li/g) ?? [])).toHaveLength(5);
   });
 
-  it("adds future rainfall inside the existing rain card with coverage and source time", () => {
+  it("renders one rainfall feature and three compact summaries from existing data", () => {
     const payload = buildOutlookFixture("wan-chai");
     const html = renderToStaticMarkup(
       <DataCards
@@ -146,12 +160,56 @@ describe("mobile UI semantics", () => {
       />,
     );
 
-    expect((html.match(/class="data-card/g) ?? [])).toHaveLength(4);
+    expect((html.match(/class="rainfall-feature/g) ?? [])).toHaveLength(1);
+    expect((html.match(/class="metric-summary-card/g) ?? [])).toHaveLength(3);
+    expect((html.match(/class="rain-bar-track/g) ?? [])).toHaveLength(4);
+    expect((html.match(/data-empty="true"/g) ?? [])).toHaveLength(4);
     expect(html).toContain("現在／過去一小時");
     expect(html).toContain("未來約 1 小時 55 分鐘未見明顯降雨訊號");
     expect(html).toContain("香港天文台兩小時降雨臨近預報");
     expect(html).toContain("資料時間");
     expect(html).toContain("13:55");
+  });
+
+  it("only renders warning tiles from a confirmed current snapshot", () => {
+    const clear = buildOutlookFixture();
+    const active = buildOutlookFixture();
+    active.warnings.items = [
+      {
+        family: "WTS",
+        code: "WTS",
+        name: "雷暴警告",
+        actionCode: "ISSUE",
+        type: "雷暴警告",
+        issueTime: "2026-07-27T05:30:00.000Z",
+        updateTime: "2026-07-27T05:55:00.000Z",
+        expireTime: null,
+      },
+    ];
+    const unavailable = buildOutlookFixture();
+    unavailable.warnings.source.status = "unavailable";
+    unavailable.warnings.items = active.warnings.items;
+
+    expect(renderToStaticMarkup(<ActiveWarnings warnings={clear.warnings} />)).toBe("");
+    expect(
+      renderToStaticMarkup(<ActiveWarnings warnings={active.warnings} />),
+    ).toContain("雷暴警告");
+    const unavailableHtml = renderToStaticMarkup(
+      <ActiveWarnings warnings={unavailable.warnings} />,
+    );
+    expect(unavailableHtml).toContain("未能完整確認目前天氣警告");
+    expect(unavailableHtml).not.toContain("warning-tile");
+  });
+
+  it("keeps forecast copy in a compact native disclosure", () => {
+    const payload = buildOutlookFixture();
+    const html = renderToStaticMarkup(
+      <ForecastDetails forecast={payload.forecast} weather={payload.weather} />,
+    );
+
+    expect(html).toContain("<details");
+    expect(html).toContain("本港預報與提示");
+    expect(html).toContain("大致天晴，部分時間有陽光。");
   });
 
   it("only exposes the star layer for a verified clear night", () => {
@@ -217,19 +275,23 @@ describe("mobile UI semantics", () => {
   it("renders every required development scene preview", () => {
     const html = renderToStaticMarkup(<WeatherScenePreview />);
 
-    for (const sceneId of [
-      "clear-day",
-      "clear-night",
-      "cloudy-day",
-      "cloudy-night",
-      "overcast",
-      "rain-light",
-      "rain-heavy",
-      "storm",
-      "neutral",
-      "reduced-motion",
-    ]) {
-      expect(html).toContain(sceneId);
+    for (const period of ["day", "dusk", "night"]) {
+      for (const scene of [
+        "clear",
+        "cloudy",
+        "overcast",
+        "rain",
+        "storm",
+        "hot",
+        "neutral",
+      ]) {
+        expect(html).toContain(`${scene}-${period}`);
+      }
     }
+    expect(html).toContain("reduced-motion");
+    expect(html).toContain("<picture");
+    expect(html).toContain('media="(min-width: 64rem)"');
+    expect(html).toContain("/weather/scenes/day/clear-mobile.webp");
+    expect(html).toContain("/weather/scenes/day/clear-desktop.webp");
   });
 });

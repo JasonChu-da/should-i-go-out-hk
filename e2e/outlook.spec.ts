@@ -6,7 +6,7 @@ import type {
 import type { LocationId } from "../lib/location/districts";
 import { buildOutlookFixture } from "./fixtures/outlook";
 
-const APP_ORIGIN = "http://127.0.0.1:3100";
+const APP_ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3100";
 
 type ApiResponder = (
   locationId: LocationId,
@@ -62,6 +62,18 @@ async function openSuccessfulHomepage(page: Page): Promise<string[]> {
   return requestedLocations;
 }
 
+async function expectBackgroundSource(page: Page, path: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page
+        .locator(".weather-background-layer.is-current .weather-background-image")
+        .evaluate((image: HTMLImageElement) =>
+          image.currentSrc ? new URL(image.currentSrc).pathname : "",
+        ),
+    )
+    .toBe(path);
+}
+
 function withFutureRain(payload: OutlookPayload): OutlookPayload {
   const forecast = payload.rainfallNowcast.forecast;
   if (!forecast.value) throw new Error("E2E fixture 缺少降雨預報");
@@ -91,31 +103,106 @@ function withFutureRain(payload: OutlookPayload): OutlookPayload {
   };
 }
 
-function withUnavailableNowcast(payload: OutlookPayload): OutlookPayload {
+function withDegradedNowcast(
+  payload: OutlookPayload,
+  status: "stale" | "failed" | "malformed",
+): OutlookPayload {
+  const stale = status === "stale";
+  const issue =
+    status === "malformed"
+      ? "未來降雨預報資料格式異常。"
+      : status === "failed"
+        ? "未來降雨預報服務回應逾時。"
+        : "";
   const source = {
     ...payload.rainfallNowcast.source,
-    status: "unavailable" as const,
-    publishedAt: null,
-    rawPublishedAt: null,
-    issues: ["未能取得未來降雨預報。"],
+    status: stale ? ("stale" as const) : ("unavailable" as const),
+    publishedAt: stale ? payload.rainfallNowcast.source.publishedAt : null,
+    rawPublishedAt: stale
+      ? payload.rainfallNowcast.source.rawPublishedAt
+      : null,
+    issues: issue ? [issue] : [],
   };
   return {
     ...payload,
     status: "partial",
     rainfallNowcast: {
       forecast: {
-        status: "failed",
-        value: null,
+        ...payload.rainfallNowcast.forecast,
+        status,
+        value: stale ? payload.rainfallNowcast.forecast.value : null,
         label: "未來降雨預報",
-        place: null,
-        publishedAt: null,
-        rawPublishedAt: null,
-        message: "未能取得未來降雨預報。",
+        place: stale ? payload.rainfallNowcast.forecast.place : null,
+        publishedAt: stale
+          ? payload.rainfallNowcast.forecast.publishedAt
+          : null,
+        rawPublishedAt: stale
+          ? payload.rainfallNowcast.forecast.rawPublishedAt
+          : null,
+        message: stale ? "資料可能已過時，不會用於計分。" : issue,
       },
       source,
     },
     sources: payload.sources.map((item) =>
       item.id === "rainfallNowcast" ? source : item,
+    ),
+  };
+}
+
+function withThunderstormWarning(payload: OutlookPayload): OutlookPayload {
+  return {
+    ...payload,
+    warnings: {
+      ...payload.warnings,
+      items: [
+        {
+          family: "WTS",
+          code: "WTS",
+          name: "雷暴警告",
+          actionCode: "ISSUE",
+          type: "雷暴警告",
+          issueTime: "2026-07-27T05:30:00.000Z",
+          updateTime: "2026-07-27T05:55:00.000Z",
+          expireTime: null,
+        },
+      ],
+    },
+  };
+}
+
+function withRecoverableNowcastIssue(
+  payload: OutlookPayload,
+): OutlookPayload {
+  const source = {
+    ...payload.rainfallNowcast.source,
+    issues: ["已略過非代表格點的無效雨量。"],
+  };
+  return {
+    ...payload,
+    status: "partial",
+    rainfallNowcast: { ...payload.rainfallNowcast, source },
+    sources: payload.sources.map((item) =>
+      item.id === "rainfallNowcast" ? source : item,
+    ),
+  };
+}
+
+function withUnavailableWarnings(payload: OutlookPayload): OutlookPayload {
+  const source = {
+    ...payload.warnings.source,
+    status: "unavailable" as const,
+    issues: ["警告服務暫時不可用。"],
+  };
+  return {
+    ...payload,
+    status: "partial",
+    warnings: {
+      items: [],
+      isSnapshotComplete: false,
+      source,
+    },
+    sources: payload.sources.map((item) =>
+      item.id === "warnings" ? source : item,
     ),
   };
 }
@@ -130,18 +217,145 @@ test("首頁載入並顯示完整外出判斷", async ({ page }) => {
     "aria-valuenow",
     "7",
   );
-  await expect(page.getByText("資料齊備")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "現在的因素" })).toBeVisible();
-  await expect(page.locator(".data-card")).toHaveCount(4);
+  await expect(page.locator(".result-topline")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "跑步／踩單車" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "現在的狀況" })).toBeVisible();
+  await expect(page.locator(".rainfall-feature")).toHaveCount(1);
+  await expect(page.locator(".metric-summary-card")).toHaveCount(3);
+  await expect(page.locator(".rainfall-bars > li")).toHaveCount(4);
+  await expect(page.getByRole("heading", { name: "生效中的天氣警告" })).toHaveCount(0);
   await expect(page.getByText("5 個資料來源可用")).toBeVisible();
+  await expectBackgroundSource(page, "/weather/scenes/day/clear-desktop.webp");
+});
+
+test("picture 按 viewport 載入原生手機或桌面背景", async ({ page }) => {
+  await mockOutlookApi(page);
+  for (const viewport of [
+    { width: 390, height: 844, layout: "mobile" },
+    { width: 768, height: 1024, layout: "mobile" },
+    { width: 1280, height: 720, layout: "desktop" },
+    { width: 1920, height: 1080, layout: "desktop" },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+    await expectBackgroundSource(
+      page,
+      `/weather/scenes/day/clear-${viewport.layout}.webp`,
+    );
+  }
+});
+
+for (const viewport of [
+  { width: 390, height: 844, layout: "mobile" },
+  { width: 1440, height: 900, layout: "desktop" },
+] as const) {
+  test(`載入期間顯示 ${viewport.layout} neutral 背景再切換實際場景`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const requestedBackgrounds: string[] = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.startsWith("/weather/scenes/")) {
+        requestedBackgrounds.push(pathname);
+      }
+    });
+    let releaseApi!: () => void;
+    const apiGate = new Promise<void>((resolve) => {
+      releaseApi = resolve;
+    });
+    await page.route("**/api/outlook?*", async (route) => {
+      await apiGate;
+      const locationId = (new URL(route.request().url()).searchParams.get(
+        "location",
+      ) ?? "hong-kong") as LocationId;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify(buildOutlookFixture(locationId)),
+      });
+    });
+
+    await page.goto("/");
+    await expect(page.locator('main[data-outlook-state="loading"]')).toBeVisible();
+    await expectBackgroundSource(
+      page,
+      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
+    );
+    releaseApi();
+    await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+    await expectBackgroundSource(
+      page,
+      `/weather/scenes/day/clear-${viewport.layout}.webp`,
+    );
+    await expect(page.locator(".weather-background-image")).toHaveJSProperty(
+      "complete",
+      true,
+    );
+
+    expect(requestedBackgrounds).toEqual([
+      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
+      `/weather/scenes/day/clear-${viewport.layout}.webp`,
+    ]);
+  });
+}
+
+test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockOutlookApi(page);
+  await page.route("**/weather/scenes/**", (route) =>
+    route.fulfill({ status: 200, contentType: "image/webp", body: "" }),
+  );
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator(".weather-background-image")).toHaveCSS(
+    "visibility",
+    "hidden",
+  );
+  await expect(page.locator(".weather-background")).toHaveCSS(
+    "background-color",
+    "rgb(6, 24, 39)",
+  );
+  await page.locator(".motion-toggle").click();
+  await expect(page.locator(".weather-scene")).toHaveAttribute(
+    "data-motion",
+    "off",
+  );
+});
+
+test("Weather Scene Preview 可驗收全部 21 個背景狀態", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/scene-preview");
+
+  for (const period of ["day", "dusk", "night"]) {
+    for (const scene of [
+      "clear",
+      "cloudy",
+      "overcast",
+      "rain",
+      "storm",
+      "hot",
+      "neutral",
+    ]) {
+      const id = `${scene}-${period}`;
+      await page.getByRole("button").filter({ hasText: id }).click();
+      await expectBackgroundSource(
+        page,
+        `/weather/scenes/${period}/${scene}-desktop.webp`,
+      );
+    }
+  }
 });
 
 test("切換地區後請求及判斷結果一併更新", async ({ page }) => {
   const requestedLocations = await openSuccessfulHomepage(page);
 
+  await page.getByRole("button", { name: /香港整體/ }).click();
   await page.getByRole("button", { name: "中西區" }).click();
 
-  await expect(page.getByRole("heading", { name: "中西區" })).toBeVisible();
+  await expect(page.locator(".location-name")).toHaveText("中西區");
   await expect(page.getByRole("progressbar", { name: "外出分數 4 分" })).toBeVisible();
   await expect(page.locator(".result-summary")).toHaveText(
     "錄得 5 毫米雨量，一般外出扣 3 分。",
@@ -153,15 +367,166 @@ test("切換地區後請求及判斷結果一併更新", async ({ page }) => {
 test("切換外出模式後立即重新計分", async ({ page }) => {
   await openSuccessfulHomepage(page);
 
+  await page.getByRole("button", { name: /香港整體/ }).click();
   await page.getByRole("button", { name: "跑步／踩單車" }).click();
   await expect(page.getByRole("progressbar", { name: "外出分數 2 分" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "不建議戶外活動" })).toBeVisible();
 
+  await page.getByRole("button", { name: /香港整體/ }).click();
   await page.getByRole("button", { name: "晾衫" }).click();
   await expect(page.getByRole("progressbar", { name: "外出分數 9 分" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "適合出門", exact: true }),
   ).toBeVisible();
+});
+
+test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openSuccessfulHomepage(page);
+
+  const trigger = page.locator(".location-pill");
+  const decision = page.locator(".decision-layout");
+  const decisionTop = await decision.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  const collapsedWidth = await trigger.evaluate(
+    (element) => element.parentElement!.getBoundingClientRect().width,
+  );
+  await trigger.focus();
+  const collapsedStyle = await page.evaluate(() => {
+    const panel = document.querySelector(".location-panel")!;
+    const pill = document.querySelector(".location-pill")!;
+    return {
+      panelRadius: getComputedStyle(panel).borderRadius,
+      panelOutline: getComputedStyle(panel).outlineStyle,
+      pillOutline: getComputedStyle(pill).outlineStyle,
+    };
+  });
+
+  expect(collapsedStyle.panelRadius).toBe("25px");
+  expect(collapsedStyle.panelOutline).toBe("solid");
+  expect(collapsedStyle.pillOutline).toBe("none");
+
+  const picker = page.locator(".quick-controls");
+  await trigger.evaluate((element: HTMLButtonElement) => element.click());
+  await page.waitForTimeout(80);
+  const openingLayout = await page.evaluate(() => {
+    const shell = document.querySelector(".app-shell")!.getBoundingClientRect();
+    const panel = document.querySelector(".location-panel")!;
+    return {
+      phase: panel.getAttribute("data-phase"),
+      panelWidth: panel.getBoundingClientRect().width,
+      shellWidth: shell.width,
+      panelRadius: getComputedStyle(panel).borderRadius,
+      panelOutline: getComputedStyle(panel).outlineStyle,
+      pillOutline: getComputedStyle(
+        document.querySelector(".location-pill")!,
+      ).outlineStyle,
+      hasRunningAnimation: panel
+        .getAnimations()
+        .some((animation) => animation.playState === "running"),
+    };
+  });
+
+  await expect(picker).toBeVisible();
+  expect(openingLayout.phase).toBe("opening");
+  expect(openingLayout.panelWidth).toBeGreaterThan(collapsedWidth);
+  expect(openingLayout.panelWidth).toBeLessThan(openingLayout.shellWidth);
+  expect(openingLayout.panelRadius).toBe("25px");
+  expect(openingLayout.panelOutline).toBe("solid");
+  expect(openingLayout.pillOutline).toBe("none");
+  expect(openingLayout.hasRunningAnimation).toBe(true);
+  await expect(page.locator(".location-panel")).toHaveAttribute(
+    "data-phase",
+    "open",
+  );
+
+  const desktopLayout = await page.evaluate(() => {
+    const shell = document.querySelector(".app-shell")!.getBoundingClientRect();
+    const panel = document
+      .querySelector('.location-panel[data-open="true"]')!
+      .getBoundingClientRect();
+    const decisionRect = document
+      .querySelector(".decision-layout")!
+      .getBoundingClientRect();
+    return {
+      shellWidth: shell.width,
+      panelWidth: panel.width,
+      panelBottom: panel.bottom,
+      decisionTop: decisionRect.top,
+      panelRadius: getComputedStyle(
+        document.querySelector(".location-panel")!,
+      ).borderRadius,
+    };
+  });
+
+  expect(desktopLayout.decisionTop).toBeCloseTo(decisionTop, 0);
+  expect(desktopLayout.panelWidth).toBeCloseTo(desktopLayout.shellWidth, 0);
+  expect(desktopLayout.panelBottom).toBeGreaterThan(desktopLayout.decisionTop);
+  expect(desktopLayout.panelRadius).toBe("25px");
+
+  await trigger.evaluate((element: HTMLButtonElement) => element.click());
+  await page.waitForTimeout(60);
+  expect(
+    await page.locator(".location-panel").evaluate(
+      (element) => getComputedStyle(element).borderRadius,
+    ),
+  ).toBe("25px");
+  await trigger.evaluate((element: HTMLButtonElement) => element.click());
+  await expect(page.locator(".location-panel")).toHaveAttribute(
+    "data-phase",
+    "open",
+  );
+  await expect(picker).toHaveCount(1);
+  await expect(page.locator(".quick-controls-backdrop")).toHaveCount(1);
+
+  await trigger.click();
+  await expect(picker).toHaveCount(0);
+
+  await trigger.click();
+  await page.getByRole("button", { name: "灣仔" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await page
+    .locator(".quick-controls-backdrop")
+    .click({ position: { x: 100, y: 600 } });
+  await expect(picker).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await page.setViewportSize({ width: 360, height: 568 });
+  await trigger.click();
+  await expect(page.locator(".location-panel")).toHaveAttribute(
+    "data-phase",
+    "open",
+  );
+  const mobileLayout = await page.evaluate(() => {
+    const anchor = document
+      .querySelector(".quick-controls-anchor")!
+      .getBoundingClientRect();
+    const panel = document
+      .querySelector('.location-panel[data-open="true"]')!
+      .getBoundingClientRect();
+    const controls = document.querySelector(".quick-controls")!;
+    return {
+      anchorWidth: anchor.width,
+      panelWidth: panel.width,
+      controlsClientHeight: controls.clientHeight,
+      controlsScrollHeight: controls.scrollHeight,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    };
+  });
+
+  expect(mobileLayout.panelWidth).toBeCloseTo(mobileLayout.anchorWidth, 0);
+  expect(mobileLayout.controlsScrollHeight).toBeGreaterThan(
+    mobileLayout.controlsClientHeight,
+  );
+  expect(mobileLayout.documentScrollWidth).toBeLessThanOrEqual(
+    mobileLayout.innerWidth,
+  );
 });
 
 test("未來一小時雨訊號更新 Hero 及降雨卡，但不把背景當作正在下雨", async ({
@@ -194,23 +559,44 @@ test("未來一小時雨訊號更新 Hero 及降雨卡，但不把背景當作�
   );
 });
 
-test("只有未來降雨預報失敗時維持現有分數及資料齊備 Hero 語義", async ({
-  page,
-}) => {
+for (const scenario of [
+  { status: "stale", title: "未來降雨預報更新較慢" },
+  { status: "failed", title: "暫時未能取得未來降雨預報" },
+  { status: "malformed", title: "未來降雨預報資料暫時無法讀取" },
+] as const) {
+  test(`未來降雨預報 ${scenario.status} 時顯示準確提示並維持現有分數`, async ({
+    page,
+  }) => {
+    await mockOutlookApi(page, (locationId) =>
+      withDegradedNowcast(
+        buildOutlookFixture(locationId),
+        scenario.status,
+      ),
+    );
+    await page.goto("/");
+
+    await expect(page.getByText(scenario.title)).toBeVisible();
+    await expect(
+      page.getByText(/目前分數仍按已確認的即時觀測及警告計算。/),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("progressbar", { name: "外出分數 7 分" }),
+    ).toBeVisible();
+    await expect(page.locator(".result-topline")).toHaveCount(0);
+  });
+}
+
+test("非關鍵 nowcast issue 不顯示全頁警示", async ({ page }) => {
   await mockOutlookApi(page, (locationId) =>
-    withUnavailableNowcast(buildOutlookFixture(locationId)),
+    withRecoverableNowcastIssue(buildOutlookFixture(locationId)),
   );
   await page.goto("/");
 
-  await expect(page.getByText("未能完整取得未來降雨預報")).toBeVisible();
-  await expect(
-    page.getByText("目前分數仍按已確認的即時觀測及警告計算。"),
-  ).toBeVisible();
+  await expect(page.locator(".partial-banner")).toHaveCount(0);
+  await expect(page.getByText("5 個資料來源可用")).toBeVisible();
   await expect(
     page.getByRole("progressbar", { name: "外出分數 7 分" }),
   ).toBeVisible();
-  await expect(page.getByText("資料齊備")).toBeVisible();
-  await expect(page.getByText("資料有限")).toHaveCount(0);
 });
 
 test("定位成功時切換至最近的沙田資料", async ({ context, page }) => {
@@ -220,9 +606,8 @@ test("定位成功時切換至最近的沙田資料", async ({ context, page }) 
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "沙田" })).toBeVisible();
-  await expect(page.getByText("已使用定位")).toBeVisible();
-  await expect(page.getByText("已按裝置位置選擇最近地區；你可隨時改選。")).toBeVisible();
+  await expect(page.locator(".location-name")).toHaveText("沙田");
+  await expect(page.locator(".location-detail")).toContainText("已使用定位");
   expect(requestedLocations).toContain("sha-tin");
 });
 
@@ -234,18 +619,17 @@ test("定位被拒絕時顯示清楚 fallback 並可用鍵盤恢復", async ({
   await mockOutlookApi(page);
   await page.goto("/");
 
-  await expect(page.getByText("定位被拒絕")).toBeVisible();
-  await expect(
-    page.getByText("位置權限已被拒絕，現先顯示香港整體資料。"),
-  ).toBeVisible();
+  await expect(page.locator(".location-detail")).toContainText("定位被拒絕");
+  await expect(page.getByRole("region", { name: "一按選擇地區" })).toHaveCount(0);
+  await page.getByRole("button", { name: /香港整體/ }).click();
   await expect(page.getByRole("region", { name: "一按選擇地區" })).toBeVisible();
 
   const districtButton = page.getByRole("button", { name: "灣仔" });
   await districtButton.focus();
   await districtButton.press("Enter");
 
-  await expect(page.getByRole("heading", { name: "灣仔" })).toBeVisible();
-  await expect(page.getByText("已選擇地區")).toBeVisible();
+  await expect(page.locator(".location-name")).toHaveText("灣仔");
+  await expect(page.locator(".location-detail")).toContainText("已選擇地區");
   await expect(page.locator("#result-title")).toBeFocused();
   await expect
     .poll(() =>
@@ -254,6 +638,24 @@ test("定位被拒絕時顯示清楚 fallback 並可用鍵盤恢復", async ({
       ),
     )
     .toBe("solid");
+});
+
+test("生效警告才顯示雙格區，未能確認時改顯示審慎提示", async ({ page }) => {
+  await mockOutlookApi(page, (locationId, requestIndex) =>
+    requestIndex === 0
+      ? withThunderstormWarning(buildOutlookFixture(locationId))
+      : withUnavailableWarnings(buildOutlookFixture(locationId)),
+  );
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "生效中的天氣警告" })).toBeVisible();
+  await expect(page.locator(".warning-tile")).toHaveCount(1);
+  await expect(page.locator(".warning-tile")).toContainText("雷暴警告");
+  await expectBackgroundSource(page, "/weather/scenes/day/storm-desktop.webp");
+
+  await page.getByRole("button", { name: /香港整體/ }).click();
+  await page.getByRole("button", { name: "灣仔" }).click();
+  await expect(page.getByText("未能完整確認目前天氣警告")).toBeVisible();
 });
 
 test("API 格式錯誤顯示失敗狀態，重試後恢復", async ({ page }) => {
@@ -298,10 +700,13 @@ test("主要互動可用鍵盤操作且 focus 樣式可見", async ({ page }) =>
   await expect(motionToggle).toHaveAttribute("aria-pressed", "false");
   await expect(motionToggle).toHaveAccessibleName("動態背景：關");
 
+  await page.getByRole("button", { name: /香港整體/ }).click();
   const exerciseButton = page.getByRole("button", { name: "跑步／踩單車" });
   await exerciseButton.focus();
   await exerciseButton.press("Enter");
-  await expect(exerciseButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".location-pill")).toHaveAccessibleName(
+    /香港整體 跑步／踩單車/,
+  );
 });
 
 test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {
@@ -312,6 +717,18 @@ test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "動態背景：已減少" }),
   ).toBeVisible();
+  await page.locator(".location-pill").click();
+  await expect(page.locator(".location-panel")).toHaveAttribute(
+    "data-phase",
+    "open",
+  );
+  expect(
+    await page.locator(".location-panel").evaluate((element) =>
+      element
+        .getAnimations()
+        .some((animation) => animation.playState === "running"),
+    ),
+  ).toBe(false);
   await expect
     .poll(() =>
       page.evaluate(
@@ -324,18 +741,47 @@ test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {
     .toBe(0);
 });
 
-test("360px viewport 沒有水平溢位", async ({ page }) => {
+test("主要 viewport 沒有水平溢位且手機首屏可完成決策", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await openSuccessfulHomepage(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator("html")).toHaveCSS("scrollbar-gutter", "stable");
 
-  const dimensions = await page.evaluate(() => ({
-    innerWidth: window.innerWidth,
-    documentScrollWidth: document.documentElement.scrollWidth,
-    bodyScrollWidth: document.body.scrollWidth,
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 416, height: 896 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const dimensions = await page.evaluate(() => ({
+      innerWidth: window.innerWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+    }));
+
+    expect(dimensions.documentScrollWidth).toBeLessThanOrEqual(
+      dimensions.innerWidth,
+    );
+    expect(dimensions.bodyScrollWidth).toBeLessThanOrEqual(
+      dimensions.innerWidth,
+    );
+  }
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  const mobileLayout = await page.evaluate(() => ({
+    decisionBottom:
+      document.querySelector(".score-details")?.getBoundingClientRect().bottom ??
+      Number.POSITIVE_INFINITY,
+    minimumControlHeight: Math.min(
+      ...Array.from(
+        document.querySelectorAll(".motion-toggle, .location-pill, .mode-tab"),
+      ).map((element) => element.getBoundingClientRect().height),
+    ),
   }));
 
-  expect(dimensions.documentScrollWidth).toBeLessThanOrEqual(
-    dimensions.innerWidth,
-  );
-  expect(dimensions.bodyScrollWidth).toBeLessThanOrEqual(dimensions.innerWidth);
+  expect(mobileLayout.decisionBottom).toBeLessThanOrEqual(800);
+  expect(mobileLayout.minimumControlHeight).toBeGreaterThanOrEqual(44);
 });

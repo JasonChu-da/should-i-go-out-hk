@@ -1,17 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { DataCards } from "@/components/DataCards";
 import {
   DistrictPicker,
   LocationControls,
   type LocationUiStatus,
+  type PickerPhase,
 } from "@/components/LocationControls";
 import { ModeTabs } from "@/components/ModeTabs";
 import { ResultHero } from "@/components/ResultHero";
 import { SourceDetails } from "@/components/SourceDetails";
 import { DataFailureState, LoadingState } from "@/components/States";
-import { WarningsPanel } from "@/components/WarningsPanel";
+import { ActiveWarnings, ForecastDetails } from "@/components/WarningsPanel";
 import {
   MotionToggle,
   useMotionPreference,
@@ -29,7 +37,7 @@ import { fetchOutlookRoute } from "@/lib/outlook/browser-client";
 import { toScoringInput } from "@/lib/outlook/scoring-input";
 import { formatHktTime } from "@/lib/presentation/format";
 import { scoreOutlook } from "@/lib/scoring/score";
-import type { ActivityMode } from "@/lib/scoring/types";
+import { ACTIVITY_MODES, type ActivityMode } from "@/lib/scoring/types";
 import { deriveWeatherScene } from "@/lib/weather-scene/derive-weather-scene";
 
 type OutlookViewStatus = "loading" | "ready" | "offline" | "unavailable";
@@ -92,20 +100,58 @@ export function latestPublishedAt(payload: OutlookPayload): string | null {
   return latest;
 }
 
-function onlyRainfallNowcastIsDegraded(payload: OutlookPayload): boolean {
+interface PartialDataNotice {
+  title: string;
+  message: string;
+}
+
+interface PickerFrame {
+  width: number;
+  height: number;
+}
+
+const PICKER_OPEN_DURATION_MS = 360;
+const PICKER_CLOSE_DURATION_MS = 260;
+
+function partialDataNotice(
+  payload: OutlookPayload,
+): PartialDataNotice | null {
   const degraded = payload.sources.filter(
     (source) => source.status !== "ok" || source.issues.length > 0,
   );
-  return (
-    degraded.length > 0 &&
-    degraded.every((source) => source.id === "rainfallNowcast")
-  );
+  if (
+    degraded.length === 0 ||
+    !degraded.every((source) => source.id === "rainfallNowcast")
+  ) {
+    return {
+      title: "部分官方資料暫時不可用",
+      message: "只按可確認的觀測判斷風險；評分所需資料不足時會限制結論信心。",
+    };
+  }
+
+  const status = payload.rainfallNowcast.forecast.status;
+  if (status === "fresh") return null;
+
+  const message = "目前分數仍按已確認的即時觀測及警告計算。";
+  if (status === "stale") {
+    return {
+      title: "未來降雨預報更新較慢",
+      message: `過時資料不會計入分數。${message}`,
+    };
+  }
+  if (status === "malformed") {
+    return {
+      title: "未來降雨預報資料暫時無法讀取",
+      message,
+    };
+  }
+  return { title: "暫時未能取得未來降雨預報", message };
 }
 
 export default function OutlookApp() {
   const [locationId, setLocationId] = useState<LocationId>(HONG_KONG_WIDE.id);
   const [locationStatus, setLocationStatus] = useState<LocationUiStatus>("locating");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerPhase, setPickerPhase] = useState<PickerPhase>("closed");
   const [mode, setMode] = useState<ActivityMode>("general");
   const [routeResponse, setRouteResponse] = useState<RouteResponseState>({
     status: "loading",
@@ -116,11 +162,54 @@ export default function OutlookApp() {
   const locationRequested = useRef(false);
   const manualSelection = useRef(false);
   const currentLocationId = useRef<LocationId>(HONG_KONG_WIDE.id);
+  const locationTrigger = useRef<HTMLButtonElement>(null);
+  const locationPanel = useRef<HTMLElement>(null);
+  const pickerAnimation = useRef<Animation | null>(null);
+  const pickerAnimationStart = useRef<PickerFrame | null>(null);
   const shouldMoveFocus = useRef(false);
   const activeRequest = useRef<AbortController | null>(null);
   const requestId = useRef(0);
   const [motionEnabled, setMotionEnabled] = useMotionPreference();
   const reducedMotion = usePrefersReducedMotion();
+  const pickerMounted = pickerPhase !== "closed";
+  const pickerExpanded = pickerPhase === "opening" || pickerPhase === "open";
+
+  const capturePickerFrame = useCallback((): PickerFrame | null => {
+    const panel = locationPanel.current;
+    if (!panel) return null;
+    const rect = panel.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height,
+    };
+  }, []);
+
+  const openPicker = useCallback(() => {
+    pickerAnimationStart.current = capturePickerFrame();
+    pickerAnimation.current?.cancel();
+    pickerAnimation.current = null;
+    setPickerPhase("opening");
+  }, [capturePickerFrame]);
+
+  const closePicker = useCallback(
+    (restoreFocus = false) => {
+      if (pickerPhase === "closed" || pickerPhase === "closing") return;
+      pickerAnimationStart.current = capturePickerFrame();
+      pickerAnimation.current?.cancel();
+      pickerAnimation.current = null;
+      setPickerPhase("closing");
+      if (restoreFocus) locationTrigger.current?.focus();
+    },
+    [capturePickerFrame, pickerPhase],
+  );
+
+  const togglePicker = useCallback(() => {
+    if (pickerExpanded) {
+      closePicker();
+      return;
+    }
+    openPicker();
+  }, [closePicker, openPicker, pickerExpanded]);
 
   const loadOutlook = useCallback((nextLocationId: LocationId) => {
     const nextRequestId = requestId.current + 1;
@@ -196,7 +285,8 @@ export default function OutlookApp() {
       currentLocationId.current = HONG_KONG_WIDE.id;
       setLocationId(HONG_KONG_WIDE.id);
       setLocationStatus(result.status);
-      setPickerOpen(true);
+      pickerAnimation.current?.cancel();
+      setPickerPhase("closed");
     });
   }, [loadOutlook]);
 
@@ -224,9 +314,102 @@ export default function OutlookApp() {
     () => () => {
       requestId.current += 1;
       activeRequest.current?.abort();
+      pickerAnimation.current?.cancel();
     },
     [],
   );
+
+  useLayoutEffect(() => {
+    if (pickerPhase === "closed" || pickerPhase === "open") {
+      pickerAnimation.current?.cancel();
+      pickerAnimation.current = null;
+      return;
+    }
+
+    const panel = locationPanel.current;
+    const trigger = locationTrigger.current;
+    const nextPhase = pickerPhase === "opening" ? "open" : "closed";
+    const from = pickerAnimationStart.current;
+    if (!panel || !trigger || !from || reducedMotion || !panel.animate) {
+      setPickerPhase(nextPhase);
+      return;
+    }
+
+    const targetRect =
+      pickerPhase === "opening"
+        ? panel.getBoundingClientRect()
+        : trigger.getBoundingClientRect();
+    const panelStyle = getComputedStyle(panel);
+    const targetWidth =
+      targetRect.width +
+      (pickerPhase === "closing"
+        ? parseFloat(panelStyle.borderLeftWidth) +
+          parseFloat(panelStyle.borderRightWidth)
+        : 0);
+    const targetHeight =
+      targetRect.height +
+      (pickerPhase === "closing"
+        ? parseFloat(panelStyle.borderTopWidth) +
+          parseFloat(panelStyle.borderBottomWidth)
+        : 0);
+    const opening = pickerPhase === "opening";
+    const widthOvershoot = Math.min(4, targetWidth * 0.004);
+    const heightOvershoot = Math.min(4, targetHeight * 0.008);
+    const keyframes: Keyframe[] = opening
+      ? [
+          {
+            width: `${from.width}px`,
+            height: `${from.height}px`,
+            offset: 0,
+          },
+          {
+            width: `${targetWidth + widthOvershoot}px`,
+            height: `${targetHeight + heightOvershoot}px`,
+            offset: 0.84,
+          },
+          {
+            width: `${targetWidth}px`,
+            height: `${targetHeight}px`,
+            offset: 1,
+          },
+        ]
+      : [
+          {
+            width: `${from.width}px`,
+            height: `${from.height}px`,
+          },
+          {
+            width: `${targetWidth}px`,
+            height: `${targetHeight}px`,
+          },
+        ];
+    const animation = panel.animate(keyframes, {
+      duration: opening
+        ? PICKER_OPEN_DURATION_MS
+        : PICKER_CLOSE_DURATION_MS,
+      easing: opening
+        ? "cubic-bezier(0.2, 0.82, 0.25, 1)"
+        : "cubic-bezier(0.4, 0, 0.2, 1)",
+      fill: "both",
+    });
+
+    pickerAnimation.current = animation;
+    animation.onfinish = () => {
+      if (pickerAnimation.current === animation) setPickerPhase(nextPhase);
+    };
+  }, [pickerPhase, reducedMotion]);
+
+  useEffect(() => {
+    if (!pickerExpanded) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      closePicker(true);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [closePicker, pickerExpanded]);
 
   const viewStatus = routeResponse.status;
   const loading = viewStatus === "loading";
@@ -253,7 +436,7 @@ export default function OutlookApp() {
     currentLocationId.current = nextLocationId;
     setLocationId(nextLocationId);
     setLocationStatus("manual");
-    setPickerOpen(false);
+    closePicker(true);
     loadOutlook(nextLocationId);
   };
 
@@ -268,9 +451,8 @@ export default function OutlookApp() {
       ? "非地區化結果；即時雨量及 AQHI 採用全港有效資料中的保守代表值，未來降雨採用十八區代表格點最高值。"
       : "按地區即時雨量、最近預報格點及官方代表監測站評估。");
   const weatherScene = useMemo(() => deriveWeatherScene(payload), [payload]);
-  const onlyNowcastDegraded =
-    payload?.status === "partial" &&
-    onlyRainfallNowcastIsDegraded(payload);
+  const partialNotice =
+    payload?.status === "partial" ? partialDataNotice(payload) : null;
 
   return (
     <>
@@ -301,24 +483,63 @@ export default function OutlookApp() {
         />
       </header>
 
-      <LocationControls
-        locationLabel={payload?.location.label ?? locationLabel(locationId)}
-        locationNote={locationNote}
-        status={locationStatus}
-        pickerOpen={pickerOpen}
-        onTogglePicker={() => setPickerOpen((open) => !open)}
-        updateLabel={
-          latestUpdate
-            ? `更新於 ${formatHktTime(latestUpdate)}`
-            : viewStatus === "loading"
-              ? "正在更新…"
-              : viewStatus === "offline"
-                ? "目前離線"
-                : "資料暫不可用"
-        }
-      />
-
-      <ModeTabs mode={mode} onChange={setMode} />
+      <div
+        className="quick-controls-anchor"
+        data-open={pickerMounted}
+        data-phase={pickerPhase}
+      >
+        {pickerMounted ? (
+          <button
+            className="quick-controls-backdrop"
+            type="button"
+            tabIndex={-1}
+            aria-label="關閉地區及活動選擇"
+            data-phase={pickerPhase}
+            onClick={() => closePicker(true)}
+          />
+        ) : null}
+        <LocationControls
+          locationLabel={payload?.location.label ?? locationLabel(locationId)}
+          modeLabel={ACTIVITY_MODES.find((option) => option.id === mode)?.label ?? "一般外出"}
+          locationNote={locationNote}
+          status={locationStatus}
+          pickerPhase={pickerPhase}
+          triggerRef={locationTrigger}
+          panelRef={locationPanel}
+          onTogglePicker={togglePicker}
+          updateLabel={
+            latestUpdate
+              ? `更新於 ${formatHktTime(latestUpdate)}`
+              : viewStatus === "loading"
+                ? "正在更新…"
+                : viewStatus === "offline"
+                  ? "目前離線"
+                  : "資料暫不可用"
+          }
+        >
+          {pickerMounted ? (
+            <div
+              className="quick-controls"
+              id="quick-controls"
+              data-phase={pickerPhase}
+              aria-hidden={pickerPhase === "closing"}
+              inert={pickerPhase === "closing"}
+            >
+              <div className="quick-control-section">
+                <p>活動模式</p>
+                <ModeTabs
+                  mode={mode}
+                  onChange={(nextMode) => {
+                    setMode(nextMode);
+                    closePicker(true);
+                  }}
+                />
+              </div>
+              <DistrictPicker locationId={locationId} onSelect={selectLocation} />
+            </div>
+          ) : null}
+        </LocationControls>
+      </div>
 
       {loading ? <LoadingState /> : null}
 
@@ -338,20 +559,14 @@ export default function OutlookApp() {
         />
       ) : null}
 
-      {payload?.status === "partial" ? (
+      {partialNotice ? (
         <div className="partial-banner" role="status">
           <div>
             <strong>
               <span aria-hidden="true">!</span>{" "}
-              {onlyNowcastDegraded
-                ? "未能完整取得未來降雨預報"
-                : "部分官方資料暫時不可用"}
+              {partialNotice.title}
             </strong>
-            <p>
-              {onlyNowcastDegraded
-                ? "目前分數仍按已確認的即時觀測及警告計算。"
-                : "只按可確認的觀測判斷風險；評分所需資料不足時會限制結論信心。"}
-            </p>
+            <p>{partialNotice.message}</p>
           </div>
           <button className="text-button" type="button" onClick={retry}>重試資料</button>
         </div>
@@ -359,7 +574,10 @@ export default function OutlookApp() {
 
       {payload && result ? (
         <div className="decision-layout">
-          <ResultHero result={result} mode={mode} />
+          <div className="decision-primary">
+            <ResultHero result={result} mode={mode} />
+            <ActiveWarnings warnings={payload.warnings} />
+          </div>
           <DataCards
             weather={payload.weather}
             aqhi={payload.aqhi}
@@ -370,13 +588,9 @@ export default function OutlookApp() {
         </div>
       ) : null}
 
-      {pickerOpen ? (
-        <DistrictPicker locationId={locationId} onSelect={selectLocation} />
-      ) : null}
-
       {payload && result ? (
-        <div className="support-layout">
-          <WarningsPanel warnings={payload.warnings} forecast={payload.forecast} weather={payload.weather} />
+        <div className="utility-layout">
+          <ForecastDetails forecast={payload.forecast} weather={payload.weather} />
           <SourceDetails sources={payload.sources} />
         </div>
       ) : null}

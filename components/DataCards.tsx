@@ -24,11 +24,17 @@ function MetricState({ metric }: { metric: NormalizedMetric<unknown> }) {
   );
 }
 
-function MissingValue({ metric }: { metric: NormalizedMetric<unknown> }) {
+function MissingValue({
+  metric,
+  compact = false,
+}: {
+  metric: NormalizedMetric<unknown>;
+  compact?: boolean;
+}) {
   return (
     <div className="metric-unavailable">
       <strong>{METRIC_STATUS_LABELS[metric.status]}</strong>
-      <span>{metric.message}</span>
+      {compact ? null : <span>{metric.message}</span>}
     </div>
   );
 }
@@ -47,10 +53,7 @@ function formatRainfall(value: number): string {
     : String(Number(value.toFixed(2)));
 }
 
-function relativeQuarterHour(
-  timestamp: string,
-  generatedAt: string,
-): number {
+function relativeQuarterHour(timestamp: string, generatedAt: string): number {
   return Math.max(
     0,
     Math.round(
@@ -103,11 +106,9 @@ function nowcastCopy(
     };
   }
 
-  const first =
-    value.periods[value.firstRainWindow.firstPeriodIndex];
+  const first = value.periods[value.firstRainWindow.firstPeriodIndex];
   const last = value.periods[value.firstRainWindow.lastPeriodIndex];
-  const place =
-    location.id === "hong-kong" ? "香港部分地區" : location.label;
+  const place = location.id === "hong-kong" ? "香港部分地區" : location.label;
   const headline = first.isPartiallyElapsed
     ? `${place}目前這個半小時預報時段有降雨訊號`
     : `${place}${futurePeriodLabel(
@@ -132,6 +133,37 @@ function nowcastCopy(
   };
 }
 
+function RainfallBars({ value }: { value: RainfallNowcastValue }) {
+  const peak = Math.max(...value.periods.map((period) => period.rainfallMm));
+
+  return (
+    <ol className="rainfall-bars" aria-label="未來四段半小時預測雨量">
+      {value.periods.map((period) => {
+        const height = peak === 0 ? 0 : (period.rainfallMm / peak) * 100;
+        return (
+          <li
+            key={period.periodEndAt}
+            data-partial={period.isPartiallyElapsed}
+          >
+            <span className="rain-bar-track" aria-hidden="true">
+              <span
+                data-empty={period.rainfallMm === 0}
+                style={{ height: `${height}%` }}
+              />
+            </span>
+            <strong>{formatRainfall(period.rainfallMm)}</strong>
+            <small>毫米</small>
+            <time dateTime={period.periodEndAt}>
+              至 {formatHktTime(period.periodEndAt)}
+            </time>
+            {period.isPartiallyElapsed ? <em>進行中</em> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function DataCards({
   weather,
   aqhi,
@@ -147,12 +179,11 @@ export function DataCards({
   const nowcastVisible =
     rainfallNowcast.forecast.status === "fresh" &&
     rainfallNowcast.forecast.value !== null;
-  const futureRain = nowcastVisible
-    ? nowcastCopy(
-        rainfallNowcast.forecast.value as RainfallNowcastValue,
-        location,
-        generatedAt,
-      )
+  const nowcastValue = nowcastVisible
+    ? (rainfallNowcast.forecast.value as RainfallNowcastValue)
+    : null;
+  const futureRain = nowcastValue
+    ? nowcastCopy(nowcastValue, location, generatedAt)
     : null;
 
   return (
@@ -160,105 +191,99 @@ export function DataCards({
       <div className="section-heading factor-heading">
         <div>
           <p className="eyebrow">即時觀測</p>
-          <h2 id="data-heading">現在的因素</h2>
+          <h2 id="data-heading">現在的狀況</h2>
         </div>
         <p>過時資料不計分</p>
       </div>
 
-      <div className="data-grid">
-        <article className="data-card" data-accent="temperature">
-          <div className="card-heading">
-            <span className="card-icon" aria-hidden="true"><AppIcon name="thermometer" /></span>
-            <h3>體感</h3>
+      <article className="rainfall-feature">
+        <div className="rainfall-heading">
+          <span className="card-icon" aria-hidden="true"><AppIcon name="rain" /></span>
+          <div>
+            <p>降雨</p>
+            <h3>未來兩小時降雨</h3>
           </div>
-          {temperatureVisible ? (
-            <>
-              <div className="primary-metric">
-                <span>{weather.temperatureC.value}°</span>
-                <MetricState metric={weather.temperatureC} />
-              </div>
-              <p className="factor-status">
-                {humidityVisible ? `濕度 ${weather.humidityPercent.value}%` : METRIC_STATUS_LABELS[weather.humidityPercent.status]}
-              </p>
-            </>
-          ) : (
-            <MissingValue metric={weather.temperatureC} />
-          )}
-          <p className="metric-meta">{weather.temperatureC.place ?? "天文台觀測"} · {metricTime(weather.temperatureC)}</p>
-        </article>
+        </div>
 
-        <article className="data-card rainfall-card" data-accent="rainfall">
-          <div className="card-heading">
-            <span className="card-icon" aria-hidden="true"><AppIcon name="rain" /></span>
-            <h3>降雨</h3>
-          </div>
+        <div className="rainfall-observation">
+          <span>現在／過去一小時</span>
           {rainfallVisible ? (
-            <>
-              <p className="data-subheading">現在／過去一小時</p>
-              <div className="primary-metric">
-                <span>{weather.rainfallMm.value}</span><small>毫米</small>
-                <MetricState metric={weather.rainfallMm} />
-              </div>
-            </>
+            <strong>
+              {formatRainfall(weather.rainfallMm.value ?? 0)}
+              <small> 毫米</small>
+              <MetricState metric={weather.rainfallMm} />
+            </strong>
           ) : (
             <MissingValue metric={weather.rainfallMm} />
           )}
-          <p className="metric-meta">{weather.rainfallMm.place ?? "地區雨量"} · {metricTime(weather.rainfallMm)}</p>
-          <div className="nowcast-summary">
-            <p className="data-subheading">未來</p>
-            {futureRain ? (
-              <>
-                <strong>{futureRain.headline}</strong>
-                <span>{futureRain.detail}</span>
-              </>
-            ) : (
-              <MissingValue metric={rainfallNowcast.forecast} />
-            )}
-            <p className="metric-meta">
-              香港天文台兩小時降雨臨近預報 ·{" "}
-              {metricTime(rainfallNowcast.forecast)}
-            </p>
-          </div>
+        </div>
+
+        {nowcastValue && futureRain ? (
+          <>
+            <RainfallBars value={nowcastValue} />
+            <p className="rainfall-window">{futureRain.headline}</p>
+            <p className="rainfall-detail">{futureRain.detail}</p>
+          </>
+        ) : (
+          <MissingValue metric={rainfallNowcast.forecast} />
+        )}
+
+        <p className="metric-meta rainfall-source">
+          香港天文台兩小時降雨臨近預報 · {metricTime(rainfallNowcast.forecast)}
+        </p>
+      </article>
+
+      <div className="metric-summary-grid">
+        <article className="metric-summary-card" data-accent="temperature">
+          <span className="card-icon" aria-hidden="true"><AppIcon name="thermometer" /></span>
+          <h3>體感</h3>
+          {temperatureVisible ? (
+            <>
+              <strong className="summary-value">{weather.temperatureC.value}°</strong>
+              <span className="summary-status">
+                {humidityVisible
+                  ? `濕度 ${weather.humidityPercent.value}%`
+                  : METRIC_STATUS_LABELS[weather.humidityPercent.status]}
+              </span>
+              <MetricState metric={weather.temperatureC} />
+            </>
+          ) : (
+            <MissingValue metric={weather.temperatureC} compact />
+          )}
         </article>
 
-        <article className="data-card" data-accent="uv">
-          <div className="card-heading">
-            <span className="card-icon" aria-hidden="true"><AppIcon name="sun" /></span>
-            <h3>紫外線</h3>
-          </div>
+        <article className="metric-summary-card" data-accent="uv">
+          <span className="card-icon" aria-hidden="true"><AppIcon name="sun" /></span>
+          <h3>紫外線</h3>
           {uvVisible ? (
             <>
-              <div className="primary-metric">
-                <span>{weather.uvIndex.value}</span>
-                <MetricState metric={weather.uvIndex} />
-              </div>
-              <p className="factor-status">{uvRisk(weather.uvIndex.value ?? 0)}</p>
+              <strong className="summary-value">{weather.uvIndex.value}</strong>
+              <span className="summary-status">{uvRisk(weather.uvIndex.value ?? 0)}</span>
+              <MetricState metric={weather.uvIndex} />
             </>
           ) : (
-            <MissingValue metric={weather.uvIndex} />
+            <MissingValue metric={weather.uvIndex} compact />
           )}
-          <p className="metric-meta">{weather.uvIndex.place ?? "天文台資料"} · {metricTime(weather.uvIndex)}</p>
         </article>
 
-        <article className="data-card" data-accent="aqhi">
-          <div className="card-heading">
-            <span className="card-icon" aria-hidden="true"><AppIcon name="air" /></span>
-            <h3>AQHI</h3>
-          </div>
+        <article className="metric-summary-card" data-accent="aqhi">
+          <span className="card-icon" aria-hidden="true"><AppIcon name="air" /></span>
+          <h3>AQHI</h3>
           {aqhiVisible ? (
             <>
-              <div className="primary-metric">
-                <span>{aqhi.aqhi.value?.display}</span>
-                <MetricState metric={aqhi.aqhi} />
-              </div>
-              <p className="factor-status">風險 {translateAqhiRisk(aqhi.healthRisk)}</p>
+              <strong className="summary-value">{aqhi.aqhi.value?.display}</strong>
+              <span className="summary-status">風險 {translateAqhiRisk(aqhi.healthRisk)}</span>
+              <MetricState metric={aqhi.aqhi} />
             </>
           ) : (
-            <MissingValue metric={aqhi.aqhi} />
+            <MissingValue metric={aqhi.aqhi} compact />
           )}
-          <p className="metric-meta">{aqhi.aqhi.place ?? "監測站"} · {metricTime(aqhi.aqhi)}</p>
         </article>
       </div>
+
+      <p className="observation-source-line">
+        即時天氣 {metricTime(weather.temperatureC)} · AQHI {metricTime(aqhi.aqhi)}
+      </p>
     </section>
   );
 }

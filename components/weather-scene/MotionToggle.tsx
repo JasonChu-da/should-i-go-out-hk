@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { AppIcon } from "@/components/AppIcon";
 
 const MOTION_STORAGE_KEY = "weather-scene-motion:v1";
 const MOTION_CHANGE_EVENT = "weather-scene-motion-change";
@@ -85,21 +86,20 @@ export function MotionToggle({
   onChange,
 }: MotionToggleProps) {
   const stateLabel = !enabled ? "關" : reducedMotion ? "已減少" : "開";
+  const accessibleLabel = `動態背景：${stateLabel}`;
+
   return (
     <button
       className="motion-toggle"
       type="button"
       aria-pressed={enabled}
-      aria-label={`動態背景：${stateLabel}`}
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
+      data-reduced={reducedMotion}
       onClick={() => onChange(!enabled)}
     >
-      <span className="motion-toggle-mark" aria-hidden="true"><span /></span>
-      <span>動態背景</span>
-      <strong className="motion-toggle-state" aria-hidden="true">
-        <span className="motion-toggle-state-on">開</span>
-        <span className="motion-toggle-state-off">關</span>
-        <span className="motion-toggle-state-reduced">已減少</span>
-      </strong>
+      <AppIcon name="air" />
+      <span className="motion-toggle-dot" aria-hidden="true" />
     </button>
   );
 }

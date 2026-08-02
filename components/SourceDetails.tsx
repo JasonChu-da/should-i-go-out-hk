@@ -26,14 +26,14 @@ export function SourceDetails({ sources }: SourceDetailsProps) {
 
   return (
     <section className="source-section" aria-labelledby="source-heading">
-      <details className="source-accordion">
+      <details className="utility-details source-accordion">
         <summary>
-          <span className="source-summary-icon" aria-hidden="true"><AppIcon name="database" /></span>
-          <span className="source-summary-copy">
+          <span className="utility-summary-icon" aria-hidden="true"><AppIcon name="database" /></span>
+          <span className="utility-summary-copy">
             <strong id="source-heading">{availableCount} 個資料來源可用</strong>
             <small>最新更新 {formatHktTime(latestUpdate)}</small>
           </span>
-          <span className="source-summary-action">查看詳情<AppIcon name="chevron" /></span>
+          <span className="utility-summary-action">查看<AppIcon name="chevron" /></span>
         </summary>
         <ul className="source-list">
           {sources.map((source) => (

@@ -1,3 +1,4 @@
+import type { ReactNode, Ref } from "react";
 import {
   DISTRICTS,
   HONG_KONG_WIDE,
@@ -13,6 +14,8 @@ export type LocationUiStatus =
   | "unsupported"
   | "timeout"
   | "unavailable";
+
+export type PickerPhase = "closed" | "opening" | "open" | "closing";
 
 const LOCATION_MESSAGES: Record<LocationUiStatus, string> = {
   locating: "正在取得你所在的地區；精確位置不會儲存或傳送。",
@@ -36,49 +39,65 @@ const LOCATION_STATUS_LABELS: Record<LocationUiStatus, string> = {
 
 interface LocationControlsProps {
   locationLabel: string;
+  modeLabel: string;
   locationNote: string;
   status: LocationUiStatus;
-  pickerOpen: boolean;
+  pickerPhase: PickerPhase;
   onTogglePicker: () => void;
   updateLabel?: string;
+  triggerRef?: Ref<HTMLButtonElement>;
+  panelRef?: Ref<HTMLElement>;
+  children?: ReactNode;
 }
 
 export function LocationControls({
   locationLabel,
+  modeLabel,
   locationNote,
   status,
-  pickerOpen,
+  pickerPhase,
   onTogglePicker,
   updateLabel = "等待更新",
+  triggerRef,
+  panelRef,
+  children,
 }: LocationControlsProps) {
+  const pickerMounted = pickerPhase !== "closed";
+  const pickerExpanded = pickerPhase === "opening" || pickerPhase === "open";
+
   return (
-    <section className="location-panel" aria-labelledby="location-heading">
-      <div className="location-summary">
-        <div className="location-primary">
+    <section
+      ref={panelRef}
+      className="location-panel"
+      aria-labelledby="location-heading"
+      data-open={pickerMounted}
+      data-phase={pickerPhase}
+    >
+      <button
+        ref={triggerRef}
+        className="location-pill"
+        type="button"
+        aria-expanded={pickerExpanded}
+        aria-controls="quick-controls"
+        onClick={onTogglePicker}
+      >
+        <span className="location-primary">
           <span className="location-icon"><AppIcon name="location" /></span>
-          <div>
-            <h2 className="location-name" id="location-heading">{locationLabel}</h2>
-            <p className="location-meta">
-              <span>{LOCATION_STATUS_LABELS[status]}</span>
-              <span aria-hidden="true">·</span>
-              <span>{updateLabel}</span>
-            </p>
-          </div>
-        </div>
-        <button
-          className="text-button"
-          type="button"
-          aria-expanded={pickerOpen}
-          aria-controls="district-picker"
-          onClick={onTogglePicker}
-        >
-          {pickerOpen ? "收起地區" : "更改地區"}
-        </button>
-      </div>
+          <span className="location-name" id="location-heading">{locationLabel}</span>
+          <span className="control-separator" aria-hidden="true">·</span>
+          <span className="control-mode">{modeLabel}</span>
+        </span>
+        <span className="location-action" aria-hidden="true">
+          <AppIcon name="chevron" />
+        </span>
+      </button>
       <p className="location-detail" role="status">
+        <span>{LOCATION_STATUS_LABELS[status]}</span>
+        <span>{updateLabel}</span>
         <span>{LOCATION_MESSAGES[status]}</span>
         <span>{locationNote}</span>
       </p>
+      {children}
     </section>
   );
 }

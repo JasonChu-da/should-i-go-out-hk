@@ -15,6 +15,26 @@ export const RAINFALL_NOWCAST_HEADER = [
   "Half-hourly Nowcast Accumulated Rainfall (mm)",
 ] as const;
 
+export const CSDI_RAINFALL_NOWCAST_HEADER = [
+  "Updated Date (Year)/更新日期 (年)/更新日期 (年)",
+  "Updated Date (Month)/更新日期 (月)/更新日期 (月)",
+  "Updated Date (Day)/更新日期 (日)/更新日期 (日)",
+  "Updated Time (Hour)/更新時間 (時)/更新时间 (时)",
+  "Updated Time (Minute)/更新時間 (分)/更新时间 (分)",
+  "Updated Time (Second)/更新時間 (秒)/更新时间 (秒)",
+  "Updated Time (Time Zone)/更新時間 (時區)/更新时间 (时区)",
+  "Ending Date (Year)/完結日期 (年)/完结日期 (年)",
+  "Ending Date (Month)/完結日期 (月)/完结日期 (月)",
+  "Ending Date (Day)/完結日期 (日)/完结日期 (日)",
+  "Ending Time (Hour)/完結時間 (時)/完结时间 (时)",
+  "Ending Time (Minute)/完結時間 (分)/完结时间 (分)",
+  "Ending Time (Second)/完結時間 (秒)/完结时间 (秒)",
+  "Ending Time (Time Zone)/完結時間 (時區)/完结时间 (时区)",
+  "Latitude (degree)/緯度（度）/纬度（度）",
+  "Longitude (degree)/經度（度）/经度（度）",
+  "Half-hourly Nowcast Accumulated Rainfall (mm)/臨近預測半小時累計雨量（毫米）/临近预测半小时累计雨量（毫米）",
+] as const;
+
 const REQUIRED_OFFSETS_MINUTES = [30, 60, 90, 120] as const;
 const MAX_REPORTED_ISSUES = 10;
 
@@ -59,6 +79,27 @@ function parseCompactHktTimestamp(raw: string): string | null {
     : null;
 }
 
+function compactCsdiTimestamp(
+  fields: readonly string[],
+  indexes: readonly number[],
+): string | null {
+  const [year, month, day, hour, minute, second, timeZone] =
+    indexes.map((index) => fields[index]);
+  if (
+    !/^\d{4}$/.test(year) ||
+    !/^\d{1,2}$/.test(month) ||
+    !/^\d{1,2}$/.test(day) ||
+    !/^\d{1,2}$/.test(hour) ||
+    !/^\d{1,2}$/.test(minute) ||
+    (second !== "" && !/^0{1,2}$/.test(second)) ||
+    timeZone !== "UTC+8"
+  ) {
+    return null;
+  }
+
+  return `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}${hour.padStart(2, "0")}${minute.padStart(2, "0")}`;
+}
+
 function isValidCoordinate(
   latitude: number,
   longitude: number,
@@ -97,6 +138,8 @@ export class RainfallNowcastCsvParser {
   dataRowCount = 0;
 
   private headerSeen = false;
+  private format: "legacy" | "csdi" | null = null;
+  private csdiFieldIndexes: number[] | null = null;
   private rawUpdatedAt: string | null = null;
   private updatedAt: string | null = null;
   private readonly requiredPeriodsSeen = [false, false, false, false];
@@ -142,10 +185,21 @@ export class RainfallNowcastCsvParser {
           (expected, index) => fields[index] === expected,
         )
       ) {
-        this.fatal(
-          "$.header",
-          "CSV 標題必須與官方五欄英文格式完全一致",
+        const csdiFieldIndexes = CSDI_RAINFALL_NOWCAST_HEADER.map(
+          (expected) => fields.indexOf(expected),
         );
+        if (
+          fields.length === CSDI_RAINFALL_NOWCAST_HEADER.length &&
+          new Set(fields).size === fields.length &&
+          csdiFieldIndexes.every((index) => index >= 0)
+        ) {
+          this.format = "csdi";
+          this.csdiFieldIndexes = csdiFieldIndexes;
+        } else {
+          this.fatal("$.header", "CSV 標題與官方格式不符");
+        }
+      } else {
+        this.format = "legacy";
       }
       return;
     }
@@ -153,7 +207,36 @@ export class RainfallNowcastCsvParser {
     if (line.trim() === "") return;
     this.dataRowCount += 1;
     const path = `$.rows[${this.dataRowCount}]`;
-    const fields = line.split(",").map((field) => field.trim());
+    let fields = line.split(",").map((field) => field.trim());
+
+    if (this.format === "csdi") {
+      if (
+        fields.length !== CSDI_RAINFALL_NOWCAST_HEADER.length ||
+        this.csdiFieldIndexes === null
+      ) {
+        this.fatal(path, "CSDI CSV 資料列必須恰好有十七欄");
+        return;
+      }
+      const updatedAt = compactCsdiTimestamp(
+        fields,
+        this.csdiFieldIndexes.slice(0, 7),
+      );
+      const endingAt = compactCsdiTimestamp(
+        fields,
+        this.csdiFieldIndexes.slice(7, 14),
+      );
+      if (!updatedAt || !endingAt) {
+        this.fatal(path, "CSDI 更新或結束時間格式無效");
+        return;
+      }
+      fields = [
+        updatedAt,
+        endingAt,
+        fields[this.csdiFieldIndexes[14]],
+        fields[this.csdiFieldIndexes[15]],
+        fields[this.csdiFieldIndexes[16]],
+      ];
+    }
 
     if (fields.length !== RAINFALL_NOWCAST_HEADER.length) {
       this.fatal(path, "CSV 資料列必須恰好有五欄");

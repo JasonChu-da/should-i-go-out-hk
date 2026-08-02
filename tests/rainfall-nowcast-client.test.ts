@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import {
   afterEach,
   beforeEach,
@@ -12,24 +10,25 @@ import {
 import {
   clearRainfallNowcastCache,
   fetchRainfallNowcast,
-  MAX_DATA_ROWS,
+  MAX_COMPRESSED_RESPONSE_BYTES,
   MAX_RESPONSE_BYTES,
   RAINFALL_NOWCAST_ERROR_MESSAGES,
 } from "@/lib/api/rainfall-nowcast";
 import type { FetchImplementation } from "@/lib/api/client";
 
-const FIXTURE = readFileSync(
-  new URL(
-    "./fixtures/gridded-rainfall-nowcast-live-sanitized.csv",
-    import.meta.url,
-  ),
-  "utf8",
-);
 const TEST_NOW = Date.parse("2026-07-30T09:20:00.000Z");
+const ZIP_FIXTURE = Uint8Array.from(
+  Buffer.from(
+    [
+      "UEsDBBQAAAAIAJdsAl1iy7MH+QEAAEIGAAAcAAAAZ3JpZGRlZF9yYWluZmFsbF9ub3djYXN0LmNzdp2SXWvaUBjH7/spcqnsVJNoW70cc9CL2outXnR3wUQNxGS4hNG7IaN1fUE3oVJa2Au4CRN1LDpnB/syS2Ku9hV2zsGXPCdSOm9OyJ/n95wnzy+557JkKjKXwScXOVSkSjTuXtvu5cBttd2b91zE+WmvilAOkFlDN0tsnXtTWxUxaEY6ClW12quiBXigljG4a1jLaa+q/mUTl11Vl+TIb9mEHLFkVtUtU2FZp3bMsiRi2KdK3tBllvW+vGNZEjEsPZ8Zeuhq/HQuXq2Y3DmfRNFjXVb1InDk9M69YQM4ItFtEzgC4EwRJKkiSFJFgKSGGI4YYjhiaMYFBc3AoKA5GBAEwLkfiFI/EKV+ADrXA1GqB6JUD0ADdkIzUzuhsamdPclUTUvGDWSlWFEw7f3oO5PPf3/V6Pkm7k26wXe0Z+hFFhk1IXJbB8iupBU2S3if2hG3b7zMSy9M7mE+b5Utjf5fTyRVL0iaxkXK5Wh8etKZ/n7rf2i4465zceoM6vgTPLs/7dT8645/UseN3f5X79t3ctefsU2qP712h2ez6taIVPc+hqs3RF7cRjsowSNhBwkiQrmDRw9SCMTJZSzGxNQ2EoRELJ1MIz4mCut2SMZEUcAdeP4eHVLBODRDYt0O/znDXXvYWrfDYob7bDJ95x5S63ZYzJDc+AdQSwECFAAUAAAACACXbAJdYsuzB/kBAABCBgAAHAAAAAAAAAAAAAAAAAAAAAAAZ3JpZGRlZF9yYWluZmFsbF9ub3djYXN0LmNzdlBLBQYAAAAAAQABAEoAAAAzAgAAAAA=",
+    ].join(""),
+    "base64",
+  ),
+);
 
-function csvResponse(
-  body: BodyInit | null,
-  contentType = "text/csv; charset=utf-8",
+function zipResponse(
+  body: BodyInit | null = ZIP_FIXTURE,
+  contentType = "application/zip",
 ): Response {
   return new Response(body, {
     headers: { "Content-Type": contentType },
@@ -46,11 +45,11 @@ describe("fetchRainfallNowcast", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["text/csv", "text/plain", "application/octet-stream"])(
+  it.each(["application/zip", "application/octet-stream"])(
     "接受 %s，cache 只保存十八區的精簡 snapshot",
     async (contentType) => {
       const fetchImpl = vi.fn(async () =>
-        csvResponse(FIXTURE, contentType),
+        zipResponse(ZIP_FIXTURE, contentType),
       );
       const options = {
         fetchImpl,
@@ -74,7 +73,7 @@ describe("fetchRainfallNowcast", () => {
       }
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       expect(fetchImpl).toHaveBeenCalledWith(
-        expect.stringContaining("Gridded_rainfall_nowcast.csv"),
+        expect.stringContaining("gridded_rainfall_nowcast.zip"),
         expect.objectContaining({
           cache: "no-store",
           signal: expect.any(AbortSignal),
@@ -99,7 +98,7 @@ describe("fetchRainfallNowcast", () => {
 
     const firstPromise = fetchRainfallNowcast(options);
     const secondPromise = fetchRainfallNowcast(options);
-    resolveResponse?.(csvResponse(FIXTURE));
+    resolveResponse?.(zipResponse());
 
     const [first, second] = await Promise.all([
       firstPromise,
@@ -110,18 +109,92 @@ describe("fetchRainfallNowcast", () => {
     expect(first.ok).toBe(true);
   });
 
+  it("cache 不會越過來源更新後 24 分鐘的 hard expiry", async () => {
+    let currentTime = TEST_NOW;
+    const fetchImpl = vi.fn(async () => zipResponse());
+    const options = {
+      fetchImpl,
+      now: () => currentTime,
+      cacheKey: "source-aware-expiry",
+    };
+
+    const first = await fetchRainfallNowcast(options);
+    currentTime = Date.parse("2026-07-30T09:36:00.001Z");
+    const second = await fetchRainfallNowcast(options);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.fromCache).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("refresh 逾時時只沿用仍未過 24 分鐘的 cache", async () => {
+    vi.useFakeTimers();
+    let currentTime = TEST_NOW;
+    const fetchImpl: FetchImplementation = vi
+      .fn()
+      .mockResolvedValueOnce(zipResponse())
+      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    const options = {
+      fetchImpl,
+      now: () => currentTime,
+      timeoutMs: 100,
+      ttlMs: 100,
+      cacheKey: "fresh-cache-fallback",
+    };
+
+    const first = await fetchRainfallNowcast(options);
+    currentTime += 101;
+    const refresh = fetchRainfallNowcast(options);
+    await vi.advanceTimersByTimeAsync(100);
+    const second = await refresh;
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual(
+      first.ok ? { ...first, fromCache: true } : first,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("來源超過 24 分鐘後 refresh 失敗時不沿用 cache", async () => {
+    let currentTime = TEST_NOW;
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(zipResponse())
+      .mockRejectedValueOnce(new Error("network unavailable"));
+    const options = {
+      fetchImpl,
+      now: () => currentTime,
+      cacheKey: "expired-cache-no-fallback",
+    };
+
+    const first = await fetchRainfallNowcast(options);
+    currentTime = Date.parse("2026-07-30T09:36:00.001Z");
+    const second = await fetchRainfallNowcast(options);
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual({
+      ok: false,
+      error: {
+        type: "network",
+        message: RAINFALL_NOWCAST_ERROR_MESSAGES.network,
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("拒絕缺失或未知 Content-Type 及 null body", async () => {
     const missingType = await fetchRainfallNowcast({
       fetchImpl: async () =>
-        new Response(new TextEncoder().encode(FIXTURE)),
+        new Response(ZIP_FIXTURE),
       ttlMs: 0,
     });
     const unknownType = await fetchRainfallNowcast({
-      fetchImpl: async () => csvResponse(FIXTURE, "text/html"),
+      fetchImpl: async () => zipResponse(ZIP_FIXTURE, "text/html"),
       ttlMs: 0,
     });
     const nullBody = await fetchRainfallNowcast({
-      fetchImpl: async () => csvResponse(null),
+      fetchImpl: async () => zipResponse(null),
       ttlMs: 0,
     });
 
@@ -142,18 +215,20 @@ describe("fetchRainfallNowcast", () => {
     });
   });
 
-  it("以解壓後串流 bytes 執行 5 MiB 上限，超限即 cancel 及 abort", async () => {
+  it("壓縮內容超過 512 KiB 時立即 cancel 及 abort", async () => {
     const cancel = vi.fn();
     let signal: AbortSignal | undefined;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new Uint8Array(MAX_RESPONSE_BYTES + 1));
+        controller.enqueue(
+          new Uint8Array(MAX_COMPRESSED_RESPONSE_BYTES + 1),
+        );
       },
       cancel,
     });
     const fetchImpl: FetchImplementation = vi.fn((_input, init) => {
       signal = init?.signal ?? undefined;
-      return Promise.resolve(csvResponse(stream));
+      return Promise.resolve(zipResponse(stream));
     });
 
     const result = await fetchRainfallNowcast({
@@ -172,14 +247,14 @@ describe("fetchRainfallNowcast", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("在下載完成前維持 8 秒 timeout，並取消 reader", async () => {
+  it("在下載完成前維持完整 deadline，並取消 reader", async () => {
     vi.useFakeTimers();
     const cancel = vi.fn();
     let signal: AbortSignal | undefined;
     const stream = new ReadableStream<Uint8Array>({ cancel });
     const fetchImpl: FetchImplementation = vi.fn((_input, init) => {
       signal = init?.signal ?? undefined;
-      return Promise.resolve(csvResponse(stream));
+      return Promise.resolve(zipResponse(stream));
     });
 
     const resultPromise = fetchRainfallNowcast({
@@ -225,17 +300,16 @@ describe("fetchRainfallNowcast", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("拒絕超過 100,000 筆資料列", async () => {
-    const header = FIXTURE.slice(0, FIXTURE.indexOf("\n"));
-    const row =
-      "202607301712,202607301742,0,0,0";
-    const oversizedRows = `${header}\n${Array.from(
-      { length: MAX_DATA_ROWS + 1 },
-      () => row,
-    ).join("\n")}`;
+  it("拒絕宣告解壓後超過 5 MiB 的 ZIP", async () => {
+    const oversizedZip = ZIP_FIXTURE.slice();
+    new DataView(oversizedZip.buffer).setUint32(
+      22,
+      MAX_RESPONSE_BYTES + 1,
+      true,
+    );
 
     const result = await fetchRainfallNowcast({
-      fetchImpl: async () => csvResponse(oversizedRows),
+      fetchImpl: async () => zipResponse(oversizedZip),
       ttlMs: 0,
     });
 
@@ -248,17 +322,13 @@ describe("fetchRainfallNowcast", () => {
     });
   });
 
-  it("把非法 UTF-8 或格式錯誤列為 invalid-data，且不 cache 失敗", async () => {
-    const header = new TextEncoder().encode(
-      FIXTURE.slice(0, FIXTURE.indexOf("\n") + 1),
-    );
-    const invalidUtf8 = new Uint8Array(header.length + 1);
-    invalidUtf8.set(header);
-    invalidUtf8[header.length] = 0xff;
+  it("把損壞 ZIP 列為 invalid-data，且不 cache 失敗", async () => {
+    const invalidZip = ZIP_FIXTURE.slice();
+    invalidZip[100] ^= 0xff;
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(csvResponse(invalidUtf8))
-      .mockResolvedValueOnce(csvResponse(FIXTURE));
+      .mockResolvedValueOnce(zipResponse(invalidZip))
+      .mockResolvedValueOnce(zipResponse());
     const options = {
       fetchImpl,
       now: () => TEST_NOW,

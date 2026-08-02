@@ -8,7 +8,7 @@ export const HKO_LOCAL_FORECAST_ENDPOINT =
   "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc";
 
 export const HKO_RAINFALL_NOWCAST_ENDPOINT =
-  "https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv";
+  "https://data.weather.gov.hk/weatherAPI/hko_data/csdi/dataset/gridded_rainfall_nowcast.zip";
 
 export const HKO_RAINFALL_NOWCAST_SOURCE_PAGE =
   "https://data.gov.hk/tc-data/dataset/hk-hko-rss-gridded-rainfall-nowcast-in-hong-kong";

@@ -4,6 +4,7 @@ import {
   API_ERROR_MESSAGES,
   clearApiCache,
   fetchJson,
+  MAX_JSON_RESPONSE_BYTES,
   type FetchImplementation,
 } from "@/lib/api/client";
 import {
@@ -167,6 +168,32 @@ describe("fetchJson", () => {
         message: API_ERROR_MESSAGES["invalid-json"],
       },
     });
+  });
+
+  it("rejects declared and streamed JSON bodies above the byte limit", async () => {
+    const declared = await fetchJson("https://example.test/declared-large", {
+      fetchImpl: async () =>
+        new Response("{}", {
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": String(MAX_JSON_RESPONSE_BYTES + 1),
+          },
+        }),
+      ttlMs: 0,
+    });
+    const streamed = await fetchJson("https://example.test/streamed-large", {
+      fetchImpl: async () =>
+        new Response(`"${"x".repeat(MAX_JSON_RESPONSE_BYTES)}"`, {
+          headers: { "Content-Type": "application/json" },
+        }),
+      ttlMs: 0,
+    });
+
+    expect(declared).toEqual({
+      ok: false,
+      error: { type: "too-large", message: API_ERROR_MESSAGES["too-large"] },
+    });
+    expect(streamed).toEqual(declared);
   });
 
   it("aborts an upstream request at the timeout", async () => {

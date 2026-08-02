@@ -1,12 +1,14 @@
 import { getDefaultApiCacheTtlMs } from "./endpoints";
 
 export const DEFAULT_API_TIMEOUT_MS = 8_000;
+export const MAX_JSON_RESPONSE_BYTES = 1024 * 1024;
 
 export type ApiErrorType =
   | "timeout"
   | "network"
   | "http"
   | "content-type"
+  | "too-large"
   | "invalid-json";
 
 export const API_ERROR_MESSAGES = {
@@ -14,6 +16,7 @@ export const API_ERROR_MESSAGES = {
   network: "暫時未能連線至政府資料服務，請稍後再試。",
   http: "政府資料服務暫時未能提供資料，請稍後再試。",
   "content-type": "政府資料服務回傳了無法識別的資料格式。",
+  "too-large": "政府資料服務回傳的資料超出安全大小限制。",
   "invalid-json": "政府資料服務回傳的資料無法讀取。",
 } as const satisfies Record<ApiErrorType, string>;
 
@@ -83,6 +86,16 @@ function isJsonContentType(contentType: string | null): boolean {
   return mediaType === "application/json";
 }
 
+function releaseReader(
+  reader: ReadableStreamDefaultReader<Uint8Array> | null,
+): void {
+  try {
+    reader?.releaseLock();
+  } catch {
+    // A cancelled reader may already have released its lock.
+  }
+}
+
 async function requestJson(
   url: string,
   fetchImpl: FetchImplementation,
@@ -92,6 +105,7 @@ async function requestJson(
   cacheKey: string,
 ): Promise<ApiFetchResult> {
   const controller = new AbortController();
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let timedOut = false;
   const timeoutError = new Error("Internal API request timeout");
   timeoutError.name = "TimeoutError";
@@ -100,6 +114,7 @@ async function requestJson(
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeoutHandle = setTimeout(() => {
       timedOut = true;
+      void reader?.cancel().catch(() => undefined);
       controller.abort();
       reject(timeoutError);
     }, timeoutMs);
@@ -120,9 +135,39 @@ async function requestJson(
       return failure("content-type");
     }
 
+    const contentLength = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_JSON_RESPONSE_BYTES
+    ) {
+      const cancelPromise = response.body?.cancel();
+      controller.abort();
+      await cancelPromise?.catch(() => undefined);
+      return failure("too-large");
+    }
+
+    if (!response.body) return failure("invalid-json");
+    reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    let bytesRead = 0;
+    let json = "";
+
     let data: unknown;
     try {
-      data = await response.json();
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytesRead += chunk.value.byteLength;
+        if (bytesRead > MAX_JSON_RESPONSE_BYTES) {
+          const cancelPromise = reader.cancel();
+          controller.abort();
+          await cancelPromise.catch(() => undefined);
+          return failure("too-large");
+        }
+        json += decoder.decode(chunk.value, { stream: true });
+      }
+      json += decoder.decode();
+      data = JSON.parse(json) as unknown;
     } catch (error) {
       if (timedOut || isAbortError(error)) {
         throw error;
@@ -169,6 +214,7 @@ async function requestJson(
     if (timeoutHandle !== undefined) {
       clearTimeout(timeoutHandle);
     }
+    releaseReader(reader);
   }
 }
 

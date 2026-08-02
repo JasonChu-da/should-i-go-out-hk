@@ -58,7 +58,6 @@
 
 html {
   min-width: 320px;
-  scrollbar-gutter: stable;
   background: var(--background);
   scroll-behavior: smooth;
 }
@@ -891,6 +890,10 @@ svg {
 }
 
 @media (min-width: 42rem) {
+  html {
+    scrollbar-gutter: stable;
+  }
+
   .district-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }

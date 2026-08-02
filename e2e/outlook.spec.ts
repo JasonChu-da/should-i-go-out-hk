@@ -665,6 +665,7 @@ test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {
 test("主要 viewport 沒有水平溢位且手機首屏可完成決策", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await openSuccessfulHomepage(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.locator("html")).toHaveCSS("scrollbar-gutter", "stable");
 
   for (const viewport of [

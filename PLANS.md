@@ -264,8 +264,8 @@
 ## 2026-08-02：桌面載入版面位移修正
 
 - [x] 量度載入前後 Header 約 11 px 位移，確認與 21 px 垂直捲軸的一半吻合
-- [x] 以根元素原生 `scrollbar-gutter: stable` 預留捲軸空間
-- [x] 在既有 responsive E2E 加入穩定 scrollbar gutter 回歸檢查
+- [x] 在桌面 viewport 以根元素原生 `scrollbar-gutter: stable` 預留捲軸空間，手機保留完整可用寬度
+- [x] 在既有 responsive E2E 加入桌面穩定 scrollbar gutter 及各 viewport 無溢位回歸檢查
 - [x] 執行 lint、typecheck、test、build、目標 E2E 及最終 diff review；production 全套 E2E 16/17 通過，僅 development-only scene preview 在 production server 回傳 404
 
 ## 2026-08-02：地區膠囊原地展開選擇介面

@@ -150,7 +150,7 @@ GET:
 
 
 
-https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv
+https://data.weather.gov.hk/weatherAPI/hko_data/csdi/dataset/gridded_rainfall_nowcast.zip
 
 
 
@@ -170,27 +170,15 @@ https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv
 
 DATA.GOV.HK 列明資料每 12 分鐘更新，提供未來兩小時的四段半小時
 
-累計雨量。CSV 第一行在移除 UTF-8 BOM 及每欄首尾空白後，必須恰好
+累計雨量。Runtime 使用同一官方 CSDI dataset 公開的 ZIP；ZIP 必須只含
 
-等於官方五欄英文標題：
+`gridded_rainfall_nowcast.csv`，其 header 必須包含且只包含官方十七個
 
+multilingual 欄名。實測欄位順序可隨 snapshot 改變，因此按欄名映射，
 
+但缺欄、額外欄或重複欄仍是致命錯誤。日期、時間及時區分欄提供；每份檔案只接受一個更新時間，
 
-1\. `Updated Date and Time (in Hong Kong Time)`
-
-2\. `Ending Date and Time (in Hong Kong Time)`
-
-3\. `Latitude (degree)`
-
-4\. `Longitude (degree)`
-
-5\. `Half-hourly Nowcast Accumulated Rainfall (mm)`
-
-
-
-任何缺欄、改名、重排或額外欄位均為致命格式錯誤。兩個時間欄使用
-
-`YYYYMMDDHHMM` 香港時間；每份檔案只接受一個更新時間，必要結束時間
+時區必須為 `UTC+8`，必要結束時間
 
 必須分別為更新後 30、60、90、120 分鐘。四段原始區間以來源更新時間
 
@@ -212,15 +200,19 @@ CSV 以十進位經緯度（degree）識別格點。官方約 2 公里產品及 
 
 
 
-Server 下載完整 CSV 後只 cache 十八區共 72 個半小時值及四個香港整體
+Server 解壓並驗證官方 ZIP 後只 cache 十八區共 72 個半小時值及四個香港整體
 
 衍生值；每次 browser payload 只包含所選地區或香港整體的四段結果。
 
-Cache TTL 為 10 分鐘，freshness hard expiry 為來源更新後 24 分鐘；
+Cache soft TTL 為 10 分鐘，freshness hard expiry 為來源更新後 24 分鐘；
 
-第一版沒有 stale-if-error。TTL 後 refresh 失敗會暫停使用 nowcast，
+cache 的實際到期時間採兩者較早者，避免取得時已接近過期的 snapshot
 
-不會把舊 snapshot 當作最新資料。
+仍按擷取時間保存完整 10 分鐘。Soft TTL 後 refresh 失敗時，只可沿用
+
+仍在 24 分鐘內的已驗證 snapshot；一旦跨過 hard expiry 便立即停止使用，
+
+不會把舊 snapshot 當作最新資料或用於計分。
 
 
 
@@ -228,7 +220,9 @@ Transport 固定限制：
 
 
 
-\- `MAX_RESPONSE_BYTES = 5 * 1024 * 1024`
+\- `MAX_COMPRESSED_RESPONSE_BYTES = 512 * 1024`
+
+\- `MAX_RESPONSE_BYTES = 5 * 1024 * 1024`（解壓後）
 
 \- `MAX_DATA_ROWS = 100_000`
 
@@ -236,13 +230,13 @@ Transport 固定限制：
 
 
 
-Timeout 覆蓋 headers、完整 body download 及串流解析。只接受
+Timeout 覆蓋 headers、完整 body download、ZIP 解壓及 CSV 解析。只接受
 
-`text/csv`、`text/plain`、`application/octet-stream`；Content-Type
+`application/zip`、`application/octet-stream`；Content-Type
 
 缺失、`response.body === null`、超限、逾時或非法 UTF-8 均令此附加
 
-來源 unavailable。Byte limit 以 reader 實際讀取的解壓後 bytes 計算；
+來源 unavailable。壓縮及解壓後大小分開設限；
 
 超限時同時 cancel reader 及 abort request。
 

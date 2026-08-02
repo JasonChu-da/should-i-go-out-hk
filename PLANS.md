@@ -4,6 +4,18 @@
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
 
+## 2026-08-02：42 張響應式天氣背景矩陣
+
+- [x] 建立 7 種場景 × 3 個時段 × 手機／桌面兩種原生構圖，共 42 個唯一 WebP 路徑
+- [x] 以同一維港視點生成並逐組檢查天空、天際線、水面、天氣語義及安全文字區
+- [x] 擴充 `WeatherPeriod` 為 `day | dusk | night`，以香港座標純函式計算日出、日落及 civil dusk
+- [x] 以原生 `<picture>` 及 64rem media query 選擇方向，每個交叉淡入層自行持有圖片
+- [x] 移除背景 `background` shorthand，圖片不套 blur，場景色調只由低透明 pseudo-element 疊加
+- [x] Weather Scene Preview 覆蓋全部 21 個場景／時段組合
+- [x] 靜態測試覆蓋 42 個唯一且存在的路徑；單元測試覆蓋夏至、冬至、一般日期、邊界及無效時間
+- [ ] 生成器輸出的原生像素仍為桌面 1659–1660×948、手機 941×1672，未達 1792×1024／1024×1792；沒有以放大方式冒充達標
+- [x] 完成 390×844、768×1024、1280×720、1920×1080 E2E／視覺驗收及全部品質閘門
+
 ## Phase 1：API 探測、專案結構與決策文件
 
 - [x] 完整閱讀 `AGENTS.md`、`docs/PRODUCT_SPEC.md`、`docs/API_SOURCES.md`、`docs/ACCEPTANCE_CRITERIA.md`
@@ -199,3 +211,82 @@
 - [x] 驗證離線及失敗時不 render 任何舊天氣、評分、建議或資料驅動場景
 - [x] 建立 production PWA E2E、同 URL worker v1→v2 更新 proxy 及 CI coverage
 - [x] 更新決策、README、QA 文件並執行完整品質閘門與最終 diff review
+
+## 2026-08-01：Apple 風格天氣決策介面重構
+
+- [x] 重讀產品規格、API 來源、驗收準則、實作計劃及技術決策
+- [x] 以真實請求重驗 HKO 三個 JSON、AQHI 及降雨臨近預報 CSV 格式
+- [x] 把 Hero 改為大型結論優先、小型語意圖標及外出指數，保留可存取 progressbar
+- [x] 建立緊湊地區 pill、44px 動態圖標按鈕及薄型三模式 segmented control
+- [x] 把降雨改為四段真實資料主卡，並把體感、UV、AQHI 收斂成三格摘要
+- [x] 把生效警告改為條件式雙格，未確認警告仍顯示審慎提示
+- [x] 把預報／提示及來源詳情下移至微型原生 disclosure
+- [x] 驗證 320×568、360×800、390×844、416×896、768×1024、1280×720 的首屏層級、雙欄與水平 overflow
+- [x] 更新 UI／E2E 回歸測試並執行全部品質閘門
+- [x] 完成最終 diff review；不建立 Git commit
+
+## 2026-08-02：背景優先視覺修正
+
+- [x] 把地區與目前活動合併成單一緊湊 pill，其他活動及地區選擇收進同一二級選單
+- [x] 移除 Hero 重複狀態列，縮小標題、結論、提示、建議及資料卡文字與間距
+- [x] 加入原創香港海港背景的正常／暴雨兩個版本，沿用資料驅動 WeatherScene 動畫
+- [x] 更新靜態 UI 與 E2E，覆蓋二級選單及精簡後的 Hero 層級
+- [x] 執行 390×844 視覺檢查及完整品質閘門
+- [x] 把照片移至穩定 WeatherBackground 基底，場景切換層只保留透明色調
+- [x] 降低全頁遮罩、環境光與主要資料卡的不透明度
+- [x] 驗證正常／暴雨圖片切換、390×844 首屏及完整品質閘門
+
+## 2026-08-02：Production-readiness audit 與高優先級修正
+
+- [x] 重讀產品規格、API 來源、驗收準則及完整實作計劃
+- [x] 執行未修改基準的 lint、typecheck、372 項測試、coverage 及 production build
+- [x] 以真實 Node fetch 及 production `/api/outlook` 驗證五個官方來源，定位全來源失敗為受限 dev server 無法出站
+- [x] 按嚴重程度審核功能、型別、API、錯誤、效能、安全、無障礙、responsive、測試、重複／未使用程式碼、dependencies 及 README
+- [x] 修正 JSON response byte limit、production dependency advisories、全域安全標頭、內容對比及外部 E2E origin
+- [x] 執行修正後 lint、typecheck、test、build、npm audit 及 E2E
+
+## 2026-08-02：降雨臨近預報快取與提示修正
+
+- [x] 讓 nowcast cache 同時受 10 分鐘 soft TTL 及來源更新後 24 分鐘 hard expiry 約束
+- [x] refresh 失敗時只沿用仍在 24 分鐘內的已驗證 snapshot
+- [x] 區分 stale、failed、malformed 提示，並抑制不影響四段預報的非關鍵全頁警示
+- [x] 補齊 cache、fallback、狀態文案及 E2E 回歸測試
+- [x] 更新 API／決策文件並執行完整品質閘門
+
+## 2026-08-02：降雨 nowcast 官方壓縮來源修正
+
+- [x] 重現 2.7 MB CSV 在 8 秒 deadline 長期逾時，量度 60 秒只取得約 475 KB
+- [x] 驗證同一官方 CSDI dataset 的 16 KB ZIP 及十七欄、四時段資料契約
+- [x] 以 Node 內建 zlib 替換 transport，保留壓縮／解壓／列數／deadline 邊界
+- [x] 補齊 ZIP、CSDI CSV、cache、損壞及超限回歸測試
+- [x] 執行真實本機 route、UI、lint、typecheck、test、build 及最終 diff review
+
+## 2026-08-02：桌面載入版面位移修正
+
+- [x] 量度載入前後 Header 約 11 px 位移，確認與 21 px 垂直捲軸的一半吻合
+- [x] 以根元素原生 `scrollbar-gutter: stable` 預留捲軸空間
+- [x] 在既有 responsive E2E 加入穩定 scrollbar gutter 回歸檢查
+- [x] 執行 lint、typecheck、test、build、目標 E2E 及最終 diff review；production 全套 E2E 16/17 通過，僅 development-only scene preview 在 production server 回傳 404
+
+## 2026-08-02：地區膠囊原地展開選擇介面
+
+- [x] 把活動模式及地區選擇移入同一個地區控制表面
+- [x] 以絕對定位覆蓋下方 UI，並在桌面及手機橫跨內容區
+- [x] 加入輕微遮罩、再次點擊、遮罩點擊及 Escape 關閉行為
+- [x] 保留鍵盤焦點、reduced motion、選擇後收起及既有資料更新行為
+- [x] 補充元件／E2E 回歸測試並執行完整品質閘門
+
+## 2026-08-02：靈動島式膠囊形變動畫
+
+- [x] 統一關閉膠囊與展開卡片的外框、背景及陰影元素
+- [x] 以四階段狀態及原生 Web Animations API 實作尺寸、圓角與輕微回彈
+- [x] 讓選項延遲進場、收起時保留 DOM 至反向動畫完成
+- [x] 支援快速反向、Escape／遮罩／完成選擇及 reduced-motion fallback
+- [x] 補充動畫中段、反向操作及 reduced-motion E2E 並執行完整品質閘門
+
+## 2026-08-02：定位圖標附近圓角閃爍修正
+
+- [x] 把關閉膠囊與展開面板的外框圓角統一為實際 25px
+- [x] 從 Web Animations 尺寸形變移除 `999px → 20px` 圓角插值
+- [x] 讓鍵盤焦點環在所有動畫階段都由同一外框持有
+- [x] 驗證開啟、收起、快速反向、reduced motion 及完整品質閘門

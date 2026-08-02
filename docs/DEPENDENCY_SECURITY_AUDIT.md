@@ -1,5 +1,17 @@
 # Dependency Security Audit
 
+## 2026-08-02 follow-up
+
+本次 production-readiness audit 已處理先前仍留在 dependency tree 的高嚴重度 advisories：
+
+- `next@16.2.12` 仍固定帶入 `postcss@8.4.31`，因此以 npm override 鎖定已修補的 `postcss@8.5.25`。
+- Next 的 optional dependency range 仍停留在 `sharp@^0.34.5`，因此以 npm override 鎖定已修補的 `sharp@0.35.3`。
+- `npm audit fix` 在既有 semver 範圍內把 `brace-expansion` 更新至 `1.1.18` 與 `5.0.9`，沒有使用 `--force` 或降級套件。
+- `npm audit` 與 `npm audit --omit=dev` 均回報 0 vulnerabilities。
+- `lint`、`typecheck`、374 項單元／整合測試、production build、14 項主要 E2E 與 7 項 PWA E2E 全部通過。
+
+這兩項 override 是暫時性風險控制；待 Next.js 穩定版本直接依賴相容且已修補的版本後，應移除 override 並重新執行完整品質閘門。
+
 調查日期：2026-07-27
 
 調查基準：`ebc1b93a7ca90fc40ee3a5a7f518287a3e32bc02`

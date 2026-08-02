@@ -201,3 +201,81 @@ PWA 使用 Next.js 原生 manifest、手寫 service worker 與自包含離線頁
 每次改動 service worker、離線頁或 core allowlist 必須遞增 `CACHE_VERSION`，令 installing worker 不會改寫 active worker 的 cache。更新不使用 `skipWaiting()`；新版等待舊受控頁面全部關閉後才 activate、以 `clients.claim()` 接管及清理同專案前綴的舊 cache。
 
 理由：即時外出判斷的主要風險不是離線功能不足，而是舊天氣看似仍然即時。只離線保存應用外殼可提供可安裝及有限離線體驗，同時維持 freshness、私隱、SSR 與政府資料 failure semantics；原生平台能力亦足以覆蓋目前單頁產品，無需承擔額外 build plugin 與 runtime caching abstraction。
+
+## D-028：結論優先的無框 Hero 與漸進式資料層級
+
+首頁以「是否適合出門」作第一視線：結論用高對比白字直接浮在既有 WeatherScene 上，安全／準備／避免只以語意圖標、小型外出指數及文字共同表達。0–10 分數仍保留可見 `n/10` 及可存取 progressbar，但不再是最大視覺元素。位置改為包含狀態及更新時間的緊湊 pill，活動模式繼續使用三個一按按鈕；動態背景開關收斂成具完整 accessible name 的 44px 圖標按鈕。
+
+降雨是唯一主要玻璃資料卡，直接以既有四段半小時值繪製 CSS 柱，並保留觀測、實際時段、部分已過時段、來源及 freshness 文案。體感、UV、AQHI 只顯示主值及風險摘要；詳細來源時間移至同區底部及來源 disclosure。沒有生效警告且快照完整可用時不 render 警告區；有警告時使用獨立雙格，快照 stale、unavailable 或不完整時必須另顯審慎提示。預報、提示、逐來源時間及免責聲明下移至微型頁底層級，但最新更新及來源數保持可見。
+
+定位拒絕後不再自動展開十九個地區按鈕；香港整體結果先保持可見，使用者可在地區 pill 一按展開緊接控制列的選擇器。此項取代 D-016 的自動展開位置安排，但保留一按 fallback、選區後收起及把焦點移到新結論。手機維持單欄，桌面只把同一組元件排列成決策／觀測雙欄；不建立另一套桌面元件。
+
+理由：使用者首先需要可行動的結論和準備事項，而不是一個巨型分數或四張等權重卡片。沿用原生 `details`、既有 SVG 圖標、CSS 及資料契約即可完成新的資訊層級，無需字體、圖表或 UI dependency；同時保留安全、freshness、無障礙及失敗語義。
+
+## D-029：背景與天氣動畫是視覺主角，操作與文字退居前景
+
+地區與目前活動合併成同一粒緊湊 pill；點開後才顯示三個活動模式與地區選擇。此項取代 D-028 的常駐三模式控制列及 pill 內可見更新資訊，更新時間仍保留在頁底摘要，定位狀態仍提供給輔助技術。Hero 不再顯示重複的模式、資料齊備標籤，並縮小結論、建議、錯誤提示與資料卡的字級及留白。
+
+背景採兩張同構圖像：正常情況使用無降雨的香港海港天空，只有資料確認為雨天或暴雨時才使用帶雨版本；既有 Canvas 降雨、雲層及 reduced-motion 行為不改寫。玻璃面降低不透明度，圖像及動畫成為頁面主要視覺，不新增前端依賴。
+
+理由：首屏的識別重點是實際天氣氛圍與動畫，前景只需快速回答地點、活動與外出決定。把非當前選項及次要狀態收起，可在保留資料安全與可存取資訊的同時，避免控制列和大段文字遮蔽背景。
+
+## D-030：照片固定於 WeatherBackground 基底，場景層只負責透明色調
+
+正常、晴天、多雲、炎熱及資料不足狀態固定使用無雨海港照片；只有 `rain` 或 `storm` 場景使用暴雨照片。照片由穩定的 `.weather-background` 承載，交叉淡入的 `.weather-background-layer` 不再持有照片或不透明漸層，只疊加低透明冷暖色調。全頁 readability、環境光及主要資料卡亦降低遮蔽程度，文字依靠既有陰影、局部玻璃及邊框維持對比。
+
+理由：照片若與多組 scene `background` shorthand 共用同一層，cascade 或舊編譯結果會令圖片被純色覆蓋；固定基底可令圖片始終存在，同時保留資料驅動動畫、雨天語義、場景過場及 reduced-motion。
+
+## D-031：背景矩陣按場景、香港日照時段及 viewport 原生選圖
+
+此決策取代 D-030 的兩張共用照片安排。背景由 7 種場景 × `day | dusk | night` × `mobile | desktop` 組成 42 個固定路徑。每個交叉淡入層使用原生 `<picture>`：64rem 或以上只選 desktop，其餘只選 mobile；圖片使用 `object-fit: cover` 並只容許比例差造成的少量邊緣裁切。圖片本身不包含文字、雨線或閃電，降雨與危險強度繼續由既有 WeatherScene 動畫表達。頁面不預載或離線快取整個矩陣，也不新增圖片、天文或 UI 套件。
+
+時段不再使用固定鐘點。系統以香港座標、payload 既有 `generatedAt` 及 NOAA 太陽位置近似公式純函式計算當日日出、日落與 civil dusk；日出至日落前 45 分鐘為白天，其後至 civil dusk 為黃昏，其餘為黑夜。無效時間仍回到不帶虛構天氣暗示的中性資料狀態，不修改 API payload、評分或 freshness。
+
+理由：桌面與手機各自載入原生方向可避免把直圖放大裁成橫圖；日期感知的黃昏區間亦比固定 18:00 更符合香港季節變化。集中路徑函式與純計算已足夠覆蓋選圖及測試，不需要資產 registry、天文 API 或第三方套件。
+
+## D-032：JSON transport 限制解壓後 1 MiB，已知漏洞以精確 override 暫時封堵
+
+四個官方 JSON 回應在串流解碼時限制實際讀取的解壓後資料為 1 MiB，並保留完整 8 秒 deadline；Content-Length 或實際串流超限均取消 body、abort request、回傳安全的 `too-large` 錯誤且不寫入 cache。官方實測回應均少於 4 KiB，1 MiB 保留充足格式增長空間。
+
+Next.js 16.2.12 仍精確帶入有已知 high advisories 的 `postcss@8.4.31`，optional range 亦只接受 `sharp@0.34.x`。在沒有可用 stable Next patch 時，暫以 npm overrides 固定已修的 `postcss@8.5.25` 與 `sharp@0.35.3`；只有完整 lint、typecheck、test、build、E2E 及 audit 全數通過才保留，下一個帶入安全版本的 Next stable 發布後移除 overrides。
+
+理由：JSON endpoint 同樣是外部 trust boundary，不應只有大型 CSV 受到資源限制；精確、可移除且經完整品質閘門驗證的 transitive override，比 `npm audit fix --force` 建議的破壞性 Next 9.x 降級更可控。
+
+## D-033：Nowcast cache 以來源時間封頂，只 fallback 至仍新鮮的 snapshot
+
+降雨臨近預報繼續使用 10 分鐘 soft TTL、來源更新後 24 分鐘 hard expiry、5 MiB／100,000 rows 邊界及完整 8 秒 timeout。Cache 的實際有效期改為擷取後 soft TTL 與來源 hard expiry 的較早者；命中 cache 時亦重新檢查來源時間，避免已接近過期才取得的 snapshot 在其後數分鐘仍被當作正常 cache 回傳。
+
+Soft TTL 後的 refresh 若失敗，可回傳同一個已驗證 snapshot，但只限它在 refresh 完成時仍未超過 24 分鐘；跨過 hard expiry 後必須回傳實際失敗或新取得的 stale 狀態，並繼續排除於評分。這是 fresh-if-error，不是放寬 stale 資料政策。UI 分開說明 `stale`、`failed`、`malformed`；只有非代表格點等可恢復 issue、而所選四段預報仍為 fresh 時，問題留在來源詳情，不顯示全頁 partial banner。
+
+理由：官方約 2.7 MB CSV 在實測中下載延遲波動明顯，而來源發布時間亦可能在擷取時已接近 24 分鐘。單純提高 timeout 會拖慢整個首屏；沿用仍新鮮的 compact snapshot 並以來源時間限制 cache，可在不新增 endpoint、dependency 或過期風險下修正重試命中舊 cache及短暫 transport 波動。
+
+## D-034：Nowcast 改用官方 CSDI ZIP，停止即時下載 2.7 MB CSV
+
+2026-08-02 實測舊五欄 CSV 在 60 秒內只傳送約 475 KB／2.70 MB，單靠延長 timeout 無法成為可靠產品功能。DATA.GOV.HK 的同一 dataset 提供官方 CSDI ZIP；實測檔案約 16 KB、3.4 秒完成，內含約 216 KB、840 格點 × 4 時段的十七欄 CSV。Runtime 改用 ZIP，既有地區格點、freshness、cache、normalization、評分及 UI 契約不變。
+
+ZIP transport 只接受單一、未加密、deflate 壓縮且檔名固定的 CSV entry；使用 Node 內建 `zlib`，壓縮後限制 512 KiB、解壓後限制 5 MiB，CSV 仍限制 100,000 列及完整 8 秒 deadline。CSDI 產生器會改變十七欄順序，因此 parser 驗證精確欄名集合後按名稱映射；缺少、額外或重複欄仍會拒絕。沒有加入 dependency，亦不使用第三方天氣服務。
+
+理由：這是同一官方資料的較小傳輸格式，能直接修正冷啟動長期逾時，而不需要移除未來降雨功能、建立背景工作、資料庫或付費服務。此決策取代 D-033 對 2.7 MB CSV transport 的安排；fresh-if-error 與來源 hard expiry 規則繼續有效。
+
+## D-035：地區 pill 原地展開為全寬 overlay
+
+地區及目前活動仍由同一個 pill 觸發，但活動模式與十九個地區選項改為 pill 內部的展開內容。控制區使用固定高度錨點保留原有版面位置；展開表面由該錨點絕對定位並橫跨 app 內容區，因此不會把 Hero 或資料卡向下推。手機限制展開內容高度並在卡內捲動，桌面沿用既有四欄地區網格。
+
+展開時以輕微固定遮罩降低後方內容強度；再次點擊 pill、點擊遮罩、按 Escape、選擇活動或地區均會關閉。Escape 及遮罩關閉會把焦點送回 pill，reduced-motion 會移除新增的展開及遮罩動畫。資料請求、定位私隱、評分及 API 契約不變，亦不新增 UI dependency。
+
+理由：使用者操作的是同一組「地區＋活動」條件，不應在點擊後得到另一張視覺上分離並改變頁面排版的卡片。沿用現有 React 狀態、按鈕及 CSS 定位即可建立清楚的原地變形，同時解決桌面右側留白與手機內容過高問題。
+
+## D-036：同一外框以原生尺寸動畫在 pill 與 picker 間形變
+
+地區 pill 與展開 picker 改由同一個 `.location-panel` 持有邊框、玻璃背景及陰影，不再於開啟時把外觀由按鈕瞬間交給另一張卡片。控制狀態分為 `closed`、`opening`、`open`、`closing`；原生 Web Animations API 以實際 DOM 尺寸動畫化寬度、高度及圓角，展開使用 360ms 柔和回彈，收起使用 260ms 反向形變。選項在外框開始拓展 120ms 後才淡入，收起時先淡出並保留 DOM 至外框回到 pill 尺寸。
+
+快速重複點擊會量度目前呈現尺寸、取消舊動畫並由該尺寸反向。Escape、遮罩、再次點擊及完成選擇共用相同收起流程；資料更新不等待動畫。系統要求 reduced motion 或 `Element.animate()` 不可用時直接切換最終狀態。沒有新增動畫 dependency，固定錨點、全寬 overlay、手機內部捲動、定位私隱、評分及 API 契約不變。
+
+理由：原本的 160ms 透明度／位移動畫只令完整卡片突然出現，沒有表達「同一控制項展開」的空間關係。量度兩端真實尺寸可避免硬編碼不同地區名稱的 pill 寬度；保留反向生命週期則避免收起時 DOM 先消失而無法完成形變。
+
+## D-037：地區控制外框在形變期間固定使用 25px 圓角
+
+地區控制的關閉膠囊及展開面板統一使用 25px 外框圓角，Web Animations 只改變寬度及高度，不再把 CSS 膠囊值 `999px` 插值至卡片值 `20px`。鍵盤焦點環亦在所有階段由同一個 `.location-panel` 持有。
+
+理由：50px 高膠囊的實際圓角是 25px，但動畫直接插值 `999px` 會在元素高度增加時觸發瀏覽器的圓角比例限制，令定位圖標旁的左上弧線非線性跳動。固定實際圓角同時保持弧心對齊、消除焦點環擁有者交接，並減少一項不必要的動畫屬性。

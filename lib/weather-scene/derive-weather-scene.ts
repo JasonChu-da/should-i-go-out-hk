@@ -5,6 +5,7 @@ import type {
   SourceStatus,
 } from "@/lib/domain/outlook";
 import { findHighestPriorityWeatherIcon } from "@/lib/weather-scene/weather-icon-map";
+import { hongKongWeatherPeriod } from "@/lib/weather-scene/hong-kong-period";
 import type {
   WeatherPeriod,
   WeatherPrecipitation,
@@ -12,8 +13,6 @@ import type {
   WeatherSceneSeverity,
 } from "@/lib/weather-scene/types";
 
-const DAY_START_HOUR = 7;
-const NIGHT_START_HOUR = 18;
 const HOT_TEMPERATURE_C = 33;
 
 const PRECIPITATION_ORDER: Readonly<Record<WeatherPrecipitation, number>> = {
@@ -72,20 +71,6 @@ export interface WeatherSceneData {
     isSnapshotComplete: boolean;
     source: { status: SourceStatus };
   };
-}
-
-function hongKongPeriod(timestamp: string): WeatherPeriod | null {
-  const date = new Date(timestamp);
-  if (!Number.isFinite(date.getTime())) return null;
-
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Hong_Kong",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value);
-  if (!Number.isFinite(hour)) return null;
-  return hour >= DAY_START_HOUR && hour < NIGHT_START_HOUR ? "day" : "night";
 }
 
 function precipitationForRainfall(rainfallMm: number): WeatherPrecipitation {
@@ -156,7 +141,7 @@ export function deriveWeatherScene(
     return neutral("day", "尚未取得可驗證的天氣資料。");
   }
 
-  const period = hongKongPeriod(weatherData.generatedAt);
+  const period = hongKongWeatherPeriod(weatherData.generatedAt);
   if (period === null) {
     return neutral("day", "資料更新時間無效，無法確認香港目前是日間或夜間。");
   }

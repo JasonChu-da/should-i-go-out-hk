@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useReducer, useRef } from "react";
+import { weatherBackgroundAsset } from "@/lib/weather-scene/background-assets";
 import type { WeatherSceneResult } from "@/lib/weather-scene/types";
 
 interface WeatherBackgroundProps {
@@ -48,13 +49,26 @@ function BackgroundLayer({
   scene: BackgroundVisual;
   className: string;
 }) {
+  const mobile = weatherBackgroundAsset(scene.period, scene.scene, "mobile");
+  const desktop = weatherBackgroundAsset(scene.period, scene.scene, "desktop");
+
   return (
     <span
       className={`weather-background-layer ${className}`}
       data-scene={scene.scene}
       data-period={scene.period}
       data-severity={scene.severity}
-    />
+    >
+      <picture className="weather-background-picture">
+        <source media="(min-width: 64rem)" srcSet={desktop} />
+        <img
+          className="weather-background-image"
+          src={mobile}
+          alt=""
+          decoding="async"
+        />
+      </picture>
+    </span>
   );
 }
 
@@ -120,7 +134,10 @@ export function WeatherBackground({
   ]);
 
   return (
-    <div className="weather-background" aria-hidden="true">
+    <div
+      className="weather-background"
+      aria-hidden="true"
+    >
       {state.previous ? (
         <BackgroundLayer scene={state.previous} className="is-previous" />
       ) : null}

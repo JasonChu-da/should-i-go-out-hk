@@ -275,19 +275,23 @@ describe("mobile UI semantics", () => {
   it("renders every required development scene preview", () => {
     const html = renderToStaticMarkup(<WeatherScenePreview />);
 
-    for (const sceneId of [
-      "clear-day",
-      "clear-night",
-      "cloudy-day",
-      "cloudy-night",
-      "overcast",
-      "rain-light",
-      "rain-heavy",
-      "storm",
-      "neutral",
-      "reduced-motion",
-    ]) {
-      expect(html).toContain(sceneId);
+    for (const period of ["day", "dusk", "night"]) {
+      for (const scene of [
+        "clear",
+        "cloudy",
+        "overcast",
+        "rain",
+        "storm",
+        "hot",
+        "neutral",
+      ]) {
+        expect(html).toContain(`${scene}-${period}`);
+      }
     }
+    expect(html).toContain("reduced-motion");
+    expect(html).toContain("<picture");
+    expect(html).toContain('media="(min-width: 64rem)"');
+    expect(html).toContain("/weather/scenes/day/clear-mobile.webp");
+    expect(html).toContain("/weather/scenes/day/clear-desktop.webp");
   });
 });

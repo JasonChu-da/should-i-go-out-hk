@@ -313,3 +313,13 @@
 - [x] 圖片失敗時隱藏破圖並保留既有深藍純色 fallback；加入單一首載與失敗 fallback E2E 回歸測試
 - [x] 實際檢查手機、1440 及 1920 截圖；1920 約 1.15 倍放大但無肉眼可見模糊，因此不改 WebP quality、像素尺寸或 42 張資產
 - [x] 執行 lint、typecheck、377 項 Vitest、production build、6 項效能 audit 及 19 項 production E2E；development-only scene preview 按設計不納入 production server
+
+## 2026-08-02：恢復載入期間的預設背景
+
+- [x] 按產品選擇恢復 loading／safe 狀態的 responsive neutral WebP 及 ready 場景重新掛載
+- [x] 保留圖片失敗時的深藍純色 fallback 與破圖隱藏，不修改任何 WebP
+- [x] 延遲 mock API 驗證手機及桌面依序顯示 neutral → 實際場景
+- [x] Production Playwright 實測 390×844、430×932 均只載入兩張 mobile 圖，合計 654,670 transferred／654,070 resource bytes
+- [x] Production Playwright 實測 1440×900 只載入兩張 desktop 圖，合計 611,790 transferred／611,190 resource bytes
+- [x] 確認沒有手機／桌面交叉下載，也沒有預載其餘背景矩陣
+- [x] 執行 lint、typecheck、377 項 Vitest、production build、3 項恢復量測及 20 項 production E2E；全部通過

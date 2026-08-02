@@ -287,3 +287,11 @@ Production Playwright 冷快取量測確認首頁原本先下載 neutral，再�
 現有 desktop 1659–1660×948、mobile 941×1672 定為可接受限制；1792×1024／1024×1792 只屬日後原生重新生成時的設計目標。390、430、1440 截圖沒有放大；1920×1080 的 desktop 圖按 cover 約放大 1.15 倍，但實際截圖未見肉眼可辨模糊。沒有重製、upscale、重壓縮或更改 42 張 WebP。
 
 理由：取消一張無用的初始請求可直接減少約 296–308 KiB resource bytes，並令低速背景完成時間由約 18.00 秒降至 12.15 秒；單純插值放大不會增加細節，而目前畫面沒有證據支持承擔全矩陣重製成本。
+
+## D-039：載入體驗優先，恢復 responsive neutral 預設背景
+
+此決策取代 D-038「資料 ready 前不下載中性背景」的安排，但保留其圖片尺寸結論及失敗 fallback。首頁在 loading、offline 或 unavailable 等 safe 狀態重新渲染完整 WeatherScene，使用固定日間 neutral 手機／桌面圖；資料 ready 後以既有 key 重新掛載實際場景及交叉淡入。圖片解碼失敗時仍隱藏破圖並顯示深藍純色底。
+
+Production Playwright 實測 390×844 與 430×932 依序只請求 `neutral-mobile.webp`、`clear-mobile.webp`，合計 654,670 transferred／654,070 resource bytes；1440×900 只請求對應兩張 desktop 圖，合計 611,790／611,190 bytes。沒有方向交叉下載或預載其餘 40 張資產，也沒有新增預覽圖、計時器或依賴。
+
+理由：產品明確選擇保留載入期間的完整海港背景，並接受約 303–315 KiB 的額外初始傳輸。沿用既有 neutral 資產與 WeatherScene 是最小且一致的恢復方式；另造低解像度預覽或延遲門檻會增加資產及狀態複雜度。

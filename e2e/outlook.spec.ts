@@ -246,29 +246,60 @@ test("picture 按 viewport 載入原生手機或桌面背景", async ({ page }) 
   }
 });
 
-test("首頁只請求目前 viewport 的單一背景", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const requestedBackgrounds: string[] = [];
-  page.on("request", (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (pathname.startsWith("/weather/scenes/")) {
-      requestedBackgrounds.push(pathname);
-    }
+for (const viewport of [
+  { width: 390, height: 844, layout: "mobile" },
+  { width: 1440, height: 900, layout: "desktop" },
+] as const) {
+  test(`載入期間顯示 ${viewport.layout} neutral 背景再切換實際場景`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const requestedBackgrounds: string[] = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.startsWith("/weather/scenes/")) {
+        requestedBackgrounds.push(pathname);
+      }
+    });
+    let releaseApi!: () => void;
+    const apiGate = new Promise<void>((resolve) => {
+      releaseApi = resolve;
+    });
+    await page.route("**/api/outlook?*", async (route) => {
+      await apiGate;
+      const locationId = (new URL(route.request().url()).searchParams.get(
+        "location",
+      ) ?? "hong-kong") as LocationId;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify(buildOutlookFixture(locationId)),
+      });
+    });
+
+    await page.goto("/");
+    await expect(page.locator('main[data-outlook-state="loading"]')).toBeVisible();
+    await expectBackgroundSource(
+      page,
+      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
+    );
+    releaseApi();
+    await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+    await expectBackgroundSource(
+      page,
+      `/weather/scenes/day/clear-${viewport.layout}.webp`,
+    );
+    await expect(page.locator(".weather-background-image")).toHaveJSProperty(
+      "complete",
+      true,
+    );
+
+    expect(requestedBackgrounds).toEqual([
+      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
+      `/weather/scenes/day/clear-${viewport.layout}.webp`,
+    ]);
   });
-  await mockOutlookApi(page);
-
-  await page.goto("/");
-  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
-  await expectBackgroundSource(page, "/weather/scenes/day/clear-mobile.webp");
-  await expect(page.locator(".weather-background-image")).toHaveJSProperty(
-    "complete",
-    true,
-  );
-
-  expect(requestedBackgrounds).toEqual([
-    "/weather/scenes/day/clear-mobile.webp",
-  ]);
-});
+}
 
 test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

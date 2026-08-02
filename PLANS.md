@@ -1,8 +1,19 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-07-16
+更新日期：2026-08-02
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
+
+## 2026-08-02：目前驗證快照（程式 commit `14a0ba8`）
+
+- [x] `npm run lint -- --no-cache`、`npm run typecheck`、`npm test` 及 `npm run build` 通過
+- [x] `npm test` 實際輸出為 21 個 Vitest test files、377 項測試；數字只代表 2026-08-02 的 `14a0ba8`，日後以指令輸出為準
+- [x] 一般 Playwright E2E 18／18 通過並正常關閉 dev server；PWA E2E 7／7 通過並釋放測試 ports
+- [x] 修正 Windows 下 Playwright 內建 `webServer` 完成測試後不退出，改用既有明確 process lifecycle
+- [x] 修正 service-worker waiting → activate 交接期間首個 navigation 可被 Chromium abort 的 E2E race
+- [x] 確認 runtime 只有 README 列出的三個版本化、非敏感 localStorage key，沒有 runtime sessionStorage
+- [x] 分析行尾 warning 為本機 `core.autocrlf=true` 加上 repository 缺少政策；`git add --renormalize --dry-run .` 會觸及 169 個 paths，因此只加入 LF `.gitattributes`，不執行全庫 renormalization
+- [ ] Android Chrome 安裝流程、iPhone Safari 分享／加入主畫面及正式 HTTPS deployment 仍需真人實機驗證
 
 ## 2026-08-02：42 張響應式天氣背景矩陣
 
@@ -13,7 +24,8 @@
 - [x] 移除背景 `background` shorthand，圖片不套 blur，場景色調只由低透明 pseudo-element 疊加
 - [x] Weather Scene Preview 覆蓋全部 21 個場景／時段組合
 - [x] 靜態測試覆蓋 42 個唯一且存在的路徑；單元測試覆蓋夏至、冬至、一般日期、邊界及無效時間
-- [ ] 生成器輸出的原生像素仍為桌面 1659–1660×948、手機 941×1672，未達 1792×1024／1024×1792；沒有以放大方式冒充達標
+- [x] 硬性驗收門檻為 42 個唯一 WebP 路徑、原生 16:9／9:16 構圖、文字安全區、場景語義及 responsive 選圖；現有資產與測試已通過
+- [ ] 設計目標（非硬性驗收／上線門檻）為 desktop 1792×1024、mobile 1024×1792；目前原生輸出為 1659–1660×948、941×1672，沒有以插值放大冒充達標
 - [x] 完成 390×844、768×1024、1280×720、1920×1080 E2E／視覺驗收及全部品質閘門
 
 ## Phase 1：API 探測、專案結構與決策文件
@@ -27,7 +39,7 @@
 - [x] 建立並自我審查 MVP 架構設計
 - [x] 建立 Next.js、TypeScript strict、ESLint、Vitest 專案基線
 - [x] 建立分離的 API、validation、normalization、location、freshness、scoring、UI 目錄（後續 phase 隨實作加入專責檔案）
-- [x] Phase 1 驗證：基線 lint、test 與 build 通過（1 test）
+- [x] Phase 1 驗證：當時基線 lint、test 與 build 通過（歷史紀錄；目前數量見頁首快照）
 
 ## Phase 2：API clients、runtime validation、normalization 與 fixtures
 
@@ -75,7 +87,7 @@
 - [x] 執行 accessibility 與 responsive 結構檢查；自動截圖工具限制已記錄於 `docs/QA_REPORT.md`
 - [x] 完成 README：本機啟動、測試、production build、免費部署與資料限制
 - [x] 執行 `npm run lint`（通過）
-- [x] 執行 `npm test`（14 files、251 tests 通過）
+- [x] 執行 `npm test`（當時通過；目前數量見頁首快照）
 - [x] 執行 `npm run build`（production build 通過）
 - [x] 記錄實際結果與已知限制於 `docs/QA_REPORT.md`
 
@@ -86,18 +98,18 @@
 - [x] 確保 timeout、HTTP、格式、網絡及非 cleanup AbortError 都會進入可重試的完整失敗狀態
 - [x] 為 JavaScript 未接管頁面的情況提供可操作的整頁重載後備
 - [x] 新增 browser route client 8 項回歸測試，且不依賴 live API
-- [x] 執行 `npm run lint`、`npm test` 與 `npm run build`；15 files、259 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm test` 與 `npm run build`；當時全部通過（目前數量見頁首快照）
 
 ## 2026-07-16：專案驗收及修復複核
 
 - [x] 重新完整閱讀 `AGENTS.md`、`PLANS.md`、`README.md` 及 `docs/` 全部文件
 - [x] 檢查 `package.json` scripts、實作分層、測試案例及 Git 工作目錄；沒有重新初始化、重寫或建立 commit
-- [x] 依指定次序執行 `npm run lint`、`npm test`、`npm run build`；0 lint error、15 files／259 tests 及 production build 全部通過；另執行 `npm run typecheck` 通過
+- [x] 依指定次序執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；當時全部通過（目前數量見頁首快照）
 - [x] 以 2026-07-16 真實 HTTP 請求重新探測 HKO `rhrread`、`warnsum`、`flw` 及環保署 AQHI；四個官方 JSON 均成功解析
 - [x] 以具外網權限的 production server 端到端呼叫 `/api/outlook?location=hong-kong`；四來源均為 `ok`，證實 runtime 並非使用 fixture／static mock
 - [x] 以無外網 production server 實測四來源全失敗；畫面收斂至不顯示分數的完整失敗狀態，並提供重試、HKO 出口及逐來源失敗標示
 - [x] 複核 partial failure、missing、malformed、stale、future timestamp、warning unavailable 及 stale 不計分測試
-- [x] 搜尋 runtime 原始碼，確認沒有 localStorage、sessionStorage、database、analytics、API key 或精確位置傳送／持久化
+- [x] 搜尋 runtime 原始碼，確認精確位置不傳送／持久化，沒有 sessionStorage、database、analytics 或 API key；目前三個非敏感 localStorage key 已列於 README
 - [x] 以 360 × 800 瀏覽器 viewport 實測：無水平 overflow、所有按鈕至少 44px、首屏完整顯示標題／更新時間／模式／分數／結論／摘要／建議
 - [x] 實測十八區清單、選擇中西區、切回香港整體及三種活動模式即時重新計分
 - [x] 以 1280 × 720 viewport 實測桌面四欄資料卡且無水平 overflow；複核 dark mode 及 reduced-motion CSS
@@ -110,7 +122,7 @@
 - [x] 複核四個政府 API 的 8 秒 timeout、並行 failure isolation、短期 instance-memory cache 及錯誤分類
 - [x] 以 Vercel／Next.js 官方文件核對 Git 匯入、Node.js、Function duration、region、Hobby fair use 及網站操作流程
 - [x] 擴充 README：免費方案前提、完整 Vercel 匯入設定、`hkg1`、部署後 smoke test、runtime 與 cache 限制
-- [x] 執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`；15 files／259 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm run typecheck`、`npm test` 及 `npm run build`；當時全部通過（目前數量見頁首快照）
 - [x] 核對最終 Git 差異只包含部署文件，且沒有部署、上傳或建立 commit
 
 ## 2026-07-16：首頁 UI／UX 重設計
@@ -122,7 +134,7 @@
 - [x] 以最新 Web Interface Guidelines 審核 UI 並修復重要問題
 - [x] 依 Vercel React Best Practices 複核元件、重繪及 bundle 行為
 - [x] 驗收 desktop、360px mobile、鍵盤、focus、dark mode 及 reduced motion
-- [x] 執行 `npm run lint`、`npm test`、`npm run build`；0 lint error、15 files／260 tests 及 production build 全部通過
+- [x] 執行 `npm run lint`、`npm test`、`npm run build`；當時全部通過（目前數量見頁首快照）
 
 ## 2026-07-16：實際天氣驅動的沉浸式 WeatherScene
 
@@ -159,7 +171,7 @@
 - [x] 修正四張純資訊卡不必要的 `tabIndex=0`，並恢復 skip-link 目標的可見 focus indicator
 - [x] 實測 360×800、390×844、768×1024、1440×900；無水平 overflow，控制項至少 44px，主要結果在手機首屏內
 - [x] 複核鍵盤原生控制、focus、螢幕閱讀器名稱、heading／main 語意、文字對比及 console；沒有未命名控制、正 tabindex 或 console error／warning
-- [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；16 files／287 tests、production build 及 TypeScript 全部通過
+- [x] 執行 `npm run lint`、`npm test`、`npm run build` 及 `npm run typecheck`；當時全部通過（目前數量見頁首快照）
 - [x] 沒有建立 commit、推送、部署或上傳 GitHub
 
 ## 2026-07-27：Production-readiness audit
@@ -239,7 +251,7 @@
 ## 2026-08-02：Production-readiness audit 與高優先級修正
 
 - [x] 重讀產品規格、API 來源、驗收準則及完整實作計劃
-- [x] 執行未修改基準的 lint、typecheck、372 項測試、coverage 及 production build
+- [x] 執行當時未修改基準的 lint、typecheck、test、coverage 及 production build（目前數量見頁首快照）
 - [x] 以真實 Node fetch 及 production `/api/outlook` 驗證五個官方來源，定位全來源失敗為受限 dev server 無法出站
 - [x] 按嚴重程度審核功能、型別、API、錯誤、效能、安全、無障礙、responsive、測試、重複／未使用程式碼、dependencies 及 README
 - [x] 修正 JSON response byte limit、production dependency advisories、全域安全標頭、內容對比及外部 E2E origin
@@ -266,7 +278,7 @@
 - [x] 量度載入前後 Header 約 11 px 位移，確認與 21 px 垂直捲軸的一半吻合
 - [x] 在桌面 viewport 以根元素原生 `scrollbar-gutter: stable` 預留捲軸空間，手機保留完整可用寬度
 - [x] 在既有 responsive E2E 加入桌面穩定 scrollbar gutter 及各 viewport 無溢位回歸檢查
-- [x] 執行 lint、typecheck、test、build、目標 E2E 及最終 diff review；production 全套 E2E 16/17 通過，僅 development-only scene preview 在 production server 回傳 404
+- [x] 執行當時 lint、typecheck、test、build、目標 E2E 及最終 diff review；development-only scene preview 不納入 production server 驗收（目前結果見頁首快照）
 
 ## 2026-08-02：地區膠囊原地展開選擇介面
 

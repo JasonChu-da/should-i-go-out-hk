@@ -25,7 +25,7 @@
 - [x] Weather Scene Preview 覆蓋全部 21 個場景／時段組合
 - [x] 靜態測試覆蓋 42 個唯一且存在的路徑；單元測試覆蓋夏至、冬至、一般日期、邊界及無效時間
 - [x] 硬性驗收門檻為 42 個唯一 WebP 路徑、原生 16:9／9:16 構圖、文字安全區、場景語義及 responsive 選圖；現有資產與測試已通過
-- [ ] 設計目標（非硬性驗收／上線門檻）為 desktop 1792×1024、mobile 1024×1792；目前原生輸出為 1659–1660×948、941×1672，沒有以插值放大冒充達標
+- [x] 可接受限制為 desktop 1659–1660×948、mobile 941×1672；1792×1024／1024×1792 只保留為日後重新生成原生細節時的設計目標，不以插值放大冒充達標
 - [x] 完成 390×844、768×1024、1280×720、1920×1080 E2E／視覺驗收及全部品質閘門
 
 ## Phase 1：API 探測、專案結構與決策文件
@@ -302,3 +302,14 @@
 - [x] 從 Web Animations 尺寸形變移除 `999px → 20px` 圓角插值
 - [x] 讓鍵盤焦點環在所有動畫階段都由同一外框持有
 - [x] 驗證開啟、收起、快速反向、reduced motion 及完整品質閘門
+
+## 2026-08-02：天氣背景實際效能審查
+
+- [x] 以 production build 及 Playwright 冷快取量測 390×844、430×932、1440×900、1920×1080，確認 responsive `<picture>` 不會交叉下載手機／桌面資產，也沒有 preload 42 張
+- [x] 發現首頁先下載 neutral 再下載實際場景；手機為 654,670 transferred bytes，1440 桌面為 611,790 bytes
+- [x] 資料 ready 前改用既有深藍純色底，首次載入收斂為目前場景的一張圖片；手機減少 315,306 transferred bytes，1440 桌面減少 303,092 bytes
+- [x] 場景切換只新增一張目前 viewport 資產；相同資產再次導覽只需約 300 bytes revalidation，不會重傳完整圖片
+- [x] Slow-network 量測中主要內容可先 ready、互動維持 55 ms；背景不阻塞互動，亦不是 CLS 來源
+- [x] 圖片失敗時隱藏破圖並保留既有深藍純色 fallback；加入單一首載與失敗 fallback E2E 回歸測試
+- [x] 實際檢查手機、1440 及 1920 截圖；1920 約 1.15 倍放大但無肉眼可見模糊，因此不改 WebP quality、像素尺寸或 42 張資產
+- [x] 執行 lint、typecheck、377 項 Vitest、production build、6 項效能 audit 及 19 項 production E2E；development-only scene preview 按設計不納入 production server

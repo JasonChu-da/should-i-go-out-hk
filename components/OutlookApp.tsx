@@ -456,12 +456,15 @@ export default function OutlookApp() {
 
   return (
     <>
-    <WeatherScene
-      key={viewStatus === "ready" ? "ready" : "safe"}
-      scene={weatherScene}
-      motionEnabled={motionEnabled}
-      reducedMotion={reducedMotion}
-    />
+    {viewStatus === "ready" ? (
+      <WeatherScene
+        scene={weatherScene}
+        motionEnabled={motionEnabled}
+        reducedMotion={reducedMotion}
+      />
+    ) : (
+      <div className="weather-scene" aria-hidden="true" />
+    )}
     <a className="skip-link" href="#main-content">跳至主要內容</a>
     <main
       className="app-shell"

@@ -66,6 +66,12 @@ function BackgroundLayer({
           src={mobile}
           alt=""
           decoding="async"
+          onError={(event) => {
+            event.currentTarget.style.visibility = "hidden";
+          }}
+          onLoad={(event) => {
+            event.currentTarget.style.visibility = "";
+          }}
         />
       </picture>
     </span>

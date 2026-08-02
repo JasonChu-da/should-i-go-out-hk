@@ -246,6 +246,54 @@ test("picture 按 viewport 載入原生手機或桌面背景", async ({ page }) 
   }
 });
 
+test("首頁只請求目前 viewport 的單一背景", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const requestedBackgrounds: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith("/weather/scenes/")) {
+      requestedBackgrounds.push(pathname);
+    }
+  });
+  await mockOutlookApi(page);
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expectBackgroundSource(page, "/weather/scenes/day/clear-mobile.webp");
+  await expect(page.locator(".weather-background-image")).toHaveJSProperty(
+    "complete",
+    true,
+  );
+
+  expect(requestedBackgrounds).toEqual([
+    "/weather/scenes/day/clear-mobile.webp",
+  ]);
+});
+
+test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockOutlookApi(page);
+  await page.route("**/weather/scenes/**", (route) =>
+    route.fulfill({ status: 200, contentType: "image/webp", body: "" }),
+  );
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator(".weather-background-image")).toHaveCSS(
+    "visibility",
+    "hidden",
+  );
+  await expect(page.locator(".weather-background")).toHaveCSS(
+    "background-color",
+    "rgb(6, 24, 39)",
+  );
+  await page.locator(".motion-toggle").click();
+  await expect(page.locator(".weather-scene")).toHaveAttribute(
+    "data-motion",
+    "off",
+  );
+});
+
 test("Weather Scene Preview 可驗收全部 21 個背景狀態", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/scene-preview");

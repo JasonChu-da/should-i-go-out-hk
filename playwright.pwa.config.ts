@@ -6,7 +6,7 @@ const baseURL = `http://127.0.0.1:${proxyPort}`;
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "pwa.spec.ts",
-  globalSetup: "./e2e/pwa-global-setup.mjs",
+  globalSetup: "./e2e/global-setup.mjs",
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

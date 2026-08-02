@@ -688,7 +688,13 @@ test("同一 /sw.js URL 的新版會 waiting，全部舊分頁關閉後才 activ
   await page.close();
 
   const updatedPage = observerPage;
-  await openReadyHomepage(updatedPage);
+  await expect(async () => {
+    await updatedPage.goto("/", { timeout: 5_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(
+    updatedPage.locator('main[data-outlook-state="ready"]'),
+  ).toBeVisible();
+  await expect(updatedPage.getByRole("progressbar")).toHaveCount(1);
   await waitForController(updatedPage);
   await expect
     .poll(() =>

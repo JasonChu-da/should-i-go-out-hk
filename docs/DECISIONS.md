@@ -295,3 +295,19 @@ Production Playwright 冷快取量測確認首頁原本先下載 neutral，再�
 Production Playwright 實測 390×844 與 430×932 依序只請求 `neutral-mobile.webp`、`clear-mobile.webp`，合計 654,670 transferred／654,070 resource bytes；1440×900 只請求對應兩張 desktop 圖，合計 611,790／611,190 bytes。沒有方向交叉下載或預載其餘 40 張資產，也沒有新增預覽圖、計時器或依賴。
 
 理由：產品明確選擇保留載入期間的完整海港背景，並接受約 303–315 KiB 的額外初始傳輸。沿用既有 neutral 資產與 WeatherScene 是最小且一致的恢復方式；另造低解像度預覽或延遲門檻會增加資產及狀態複雜度。
+
+## 2026-08-03：背景圖片完成載入後才交接
+
+WeatherScene 在 loading 轉 ready 時保持掛載；新場景圖片完成載入後才淡入，載入期間或失敗時保留上一張可用背景，避免純色 fallback 短暫露出。
+
+## D-040：WeatherScene 各 freshness 訊號獨立，當前 nowcast 可表達降雨
+
+WeatherScene 不再把天氣圖示、過去一小時雨量、warning snapshot 或 nowcast 的 freshness 互相當作必要條件。已識別且可用的 storm warning 優先；其後依序使用 fresh storm icon、fresh observed rainfall、fresh 當前 nowcast（當前半小時雨量至少 0.5 mm）、fresh rain icon、fresh hot warning／氣溫及一般 fresh weather icon。warning source unavailable 或 stale 只限制該 warning 訊號；未知生效 warning 仍安全回到 neutral，已確認的 storm warning 即使 snapshot 尚未完整仍可保留 storm。
+
+這只改變視覺場景的訊號組合，不放寬 freshness，也不把 stale 或 future-only 資料帶入評分、建議或安全結論。沒有任何可用訊號才回到 neutral；loading、整體 error 及資料取得失敗仍由上層使用 neutral。
+
+## D-041：預設 neutral 圖片按香港時段使用 clear 資產
+
+首頁由 dynamic SSR 以伺服器當刻時間及現有香港日照函式決定初始 `day`、`dusk` 或 `night` period，並把 period 傳入 client component，避免 hydration mismatch 及先下載錯誤時段圖片。所有 semantic `neutral` 場景仍保持 neutral data attribute、靜態動畫及安全回退語義，但圖片路徑改用同一時段的 `clear-mobile.webp`／`clear-desktop.webp`。這只改變照片，不把無資料狀態宣稱為晴天；不加入 client 時段計時器，頁面長時間開啟時不在日照邊界自動切圖。
+
+理由：使用者開站首屏需要符合香港當刻時段的海港視覺；沿用既有 clear 資產及 `picture` responsive 選圖即可完成，並以 dynamic SSR 保持首次 HTML 與 hydration 一致。接受首頁失去完全靜態輸出，換取準確的首次背景及避免 neutral 圖片重複下載。

@@ -206,3 +206,4 @@ npm run build
 - server cache 是每個 process／serverless instance 的短期記憶體 cache；重新啟動或不同 instance 不共享。
 - 上游 API 可變更 schema 或暫時中斷；應用會顯示 partial／failure，不會補造數值。
 - Headless Chromium 可驗證 manifest、service worker 及 installability 條件，但 Android 安裝對話框與 Mobile Safari 分享選單仍需在部署後以實機 smoke test 確認。
+- 首頁初始 neutral 場景由 server 端按香港當刻 `day`／`dusk`／`night` 選用同時段 clear 圖片；資料不足仍維持 neutral 語義及靜態安全狀態。

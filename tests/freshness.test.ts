@@ -24,6 +24,10 @@ describe("assessFreshness", () => {
   const now = Date.parse("2026-07-14T12:00:00Z");
   const maxAge = FRESHNESS_THRESHOLDS_MS.weather;
 
+  it("keeps an observation fresh immediately before the maximum-age boundary", () => {
+    expect(assessFreshness(now - maxAge + 1, now, maxAge)).toBe("fresh");
+  });
+
   it("keeps an observation fresh at the exact maximum-age boundary", () => {
     expect(assessFreshness(now - maxAge, now, maxAge)).toBe("fresh");
   });

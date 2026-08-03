@@ -39,6 +39,7 @@ import { formatHktTime } from "@/lib/presentation/format";
 import { scoreOutlook } from "@/lib/scoring/score";
 import { ACTIVITY_MODES, type ActivityMode } from "@/lib/scoring/types";
 import { deriveWeatherScene } from "@/lib/weather-scene/derive-weather-scene";
+import type { WeatherPeriod } from "@/lib/weather-scene/types";
 
 type OutlookViewStatus = "loading" | "ready" | "offline" | "unavailable";
 
@@ -148,7 +149,11 @@ function partialDataNotice(
   return { title: "暫時未能取得未來降雨預報", message };
 }
 
-export default function OutlookApp() {
+interface OutlookAppProps {
+  initialPeriod: WeatherPeriod;
+}
+
+export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
   const [locationId, setLocationId] = useState<LocationId>(HONG_KONG_WIDE.id);
   const [locationStatus, setLocationStatus] = useState<LocationUiStatus>("locating");
   const [pickerPhase, setPickerPhase] = useState<PickerPhase>("closed");
@@ -450,14 +455,16 @@ export default function OutlookApp() {
     (locationId === HONG_KONG_WIDE.id
       ? "非地區化結果；即時雨量及 AQHI 採用全港有效資料中的保守代表值，未來降雨採用十八區代表格點最高值。"
       : "按地區即時雨量、最近預報格點及官方代表監測站評估。");
-  const weatherScene = useMemo(() => deriveWeatherScene(payload), [payload]);
+  const weatherScene = useMemo(
+    () => deriveWeatherScene(payload, initialPeriod),
+    [initialPeriod, payload],
+  );
   const partialNotice =
     payload?.status === "partial" ? partialDataNotice(payload) : null;
 
   return (
     <>
     <WeatherScene
-      key={viewStatus === "ready" ? "ready" : "safe"}
       scene={weatherScene}
       motionEnabled={motionEnabled}
       reducedMotion={reducedMotion}

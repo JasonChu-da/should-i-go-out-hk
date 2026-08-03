@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { weatherBackgroundAsset } from "@/lib/weather-scene/background-assets";
 import type { WeatherSceneResult } from "@/lib/weather-scene/types";
 
@@ -22,8 +28,8 @@ interface BackgroundState {
 
 type BackgroundAction =
   | { type: "transition"; scene: BackgroundVisual }
-  | { type: "replace"; scene: BackgroundVisual }
-  | { type: "settle" }
+  | { type: "reveal"; transition: boolean }
+  | { type: "fail"; keepCurrent: boolean }
   | { type: "finish" };
 
 function backgroundReducer(
@@ -33,10 +39,19 @@ function backgroundReducer(
   switch (action.type) {
     case "transition":
       return { current: action.scene, previous: state.current, entering: true };
-    case "replace":
-      return { current: action.scene, previous: null, entering: false };
-    case "settle":
-      return { ...state, entering: false };
+    case "reveal":
+      return {
+        ...state,
+        entering: false,
+        previous: action.transition ? state.previous : null,
+      };
+    case "fail":
+      if (action.keepCurrent) {
+        return { ...state, previous: null, entering: false };
+      }
+      return state.previous
+        ? { current: state.previous, previous: null, entering: false }
+        : state;
     case "finish":
       return { ...state, previous: null };
   }
@@ -45,12 +60,28 @@ function backgroundReducer(
 function BackgroundLayer({
   scene,
   className,
+  imageHidden,
+  onError,
+  onLoad,
 }: {
   scene: BackgroundVisual;
   className: string;
+  imageHidden: boolean;
+  onError?: () => void;
+  onLoad?: () => void;
 }) {
-  const mobile = weatherBackgroundAsset(scene.period, scene.scene, "mobile");
-  const desktop = weatherBackgroundAsset(scene.period, scene.scene, "desktop");
+  const assetScene = scene.scene === "neutral" ? "clear" : scene.scene;
+  const mobile = weatherBackgroundAsset(scene.period, assetScene, "mobile");
+  const desktop = weatherBackgroundAsset(scene.period, assetScene, "desktop");
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth === 0) {
+      image.style.visibility = "hidden";
+      onError?.();
+    }
+  }, [desktop, mobile, onError]);
 
   return (
     <span
@@ -62,15 +93,19 @@ function BackgroundLayer({
       <picture className="weather-background-picture">
         <source media="(min-width: 64rem)" srcSet={desktop} />
         <img
+          ref={imageRef}
           className="weather-background-image"
           src={mobile}
           alt=""
           decoding="async"
+          style={imageHidden ? { visibility: "hidden" } : undefined}
           onError={(event) => {
             event.currentTarget.style.visibility = "hidden";
+            onError?.();
           }}
           onLoad={(event) => {
             event.currentTarget.style.visibility = "";
+            onLoad?.();
           }}
         />
       </picture>
@@ -82,6 +117,7 @@ export function WeatherBackground({
   scene,
   transitionEnabled,
 }: WeatherBackgroundProps) {
+  const [imageFailed, setImageFailed] = useState(false);
   const [state, dispatch] = useReducer(backgroundReducer, {
     current: {
       scene: scene.scene,
@@ -96,6 +132,18 @@ export function WeatherBackground({
   const sceneSeverity = scene.severity;
   const incomingKey = `${sceneName}:${scenePeriod}:${sceneSeverity}`;
   const displayedKey = useRef(incomingKey);
+  const showingNeutral = sceneName === "neutral";
+  const currentScene: BackgroundVisual = showingNeutral
+    ? { scene: sceneName, period: scenePeriod, severity: sceneSeverity }
+    : state.current;
+  const handleImageError = useCallback(() => {
+    setImageFailed(true);
+    dispatch({ type: "fail", keepCurrent: scene.scene === "neutral" });
+  }, [scene.scene]);
+  const handleImageLoad = useCallback(() => {
+    setImageFailed(false);
+    dispatch({ type: "reveal", transition: transitionEnabled });
+  }, [transitionEnabled]);
 
   useEffect(() => {
     const nextScene: BackgroundVisual = {
@@ -103,53 +151,48 @@ export function WeatherBackground({
       period: scenePeriod,
       severity: sceneSeverity,
     };
-    if (displayedKey.current === incomingKey) {
-      if (!transitionEnabled) {
-        dispatch({ type: "replace", scene: nextScene });
-      }
-      return;
-    }
+    if (displayedKey.current === incomingKey) return;
     displayedKey.current = incomingKey;
 
-    if (!transitionEnabled) {
-      dispatch({ type: "replace", scene: nextScene });
-      return;
-    }
-
     dispatch({ type: "transition", scene: nextScene });
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => dispatch({ type: "settle" }));
-    });
-    const finishTimer = window.setTimeout(
-      () => dispatch({ type: "finish" }),
-      650,
-    );
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
-      window.clearTimeout(finishTimer);
-    };
   }, [
     incomingKey,
     sceneName,
     scenePeriod,
     sceneSeverity,
-    transitionEnabled,
   ]);
+
+  useEffect(() => {
+    if (state.entering || !state.previous) return;
+    const finishTimer = window.setTimeout(
+      () => dispatch({ type: "finish" }),
+      650,
+    );
+    return () => window.clearTimeout(finishTimer);
+  }, [state.entering, state.previous]);
 
   return (
     <div
       className="weather-background"
       aria-hidden="true"
     >
-      {state.previous ? (
-        <BackgroundLayer scene={state.previous} className="is-previous" />
+      {state.previous && !showingNeutral ? (
+        <BackgroundLayer
+          scene={state.previous}
+          className="is-previous"
+          imageHidden={imageFailed}
+        />
       ) : null}
       <BackgroundLayer
-        scene={state.current}
-        className={state.entering ? "is-current is-entering" : "is-current"}
+        scene={currentScene}
+        className={
+          state.entering && !showingNeutral
+            ? "is-current is-entering"
+            : "is-current"
+        }
+        imageHidden={imageFailed}
+        onError={handleImageError}
+        onLoad={handleImageLoad}
       />
     </div>
   );

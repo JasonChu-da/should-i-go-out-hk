@@ -323,3 +323,27 @@
 - [x] Production Playwright 實測 1440×900 只載入兩張 desktop 圖，合計 611,790 transferred／611,190 resource bytes
 - [x] 確認沒有手機／桌面交叉下載，也沒有預載其餘背景矩陣
 - [x] 執行 lint、typecheck、377 項 Vitest、production build、3 項恢復量測及 20 項 production E2E；全部通過
+
+## 2026-08-03：消除天氣背景切換時的藍黑色閃屏
+
+- [x] 追查 loading、hydration、ready 與圖片載入的背景切換流程
+- [x] 保留同一個 WeatherScene，待新背景載入成功後才交接並淡入
+- [x] 新背景載入失敗時保留上一張可用背景
+- [x] 執行 lint、typecheck、377 項 Vitest、production build 及目標 E2E
+
+## 2026-08-03：修正 WeatherScene freshness 訊號獨立判斷
+
+- [x] 確認 stale icon、warning availability gate 及缺少 nowcast 輸入是場景錯誤回退的根因
+- [x] 讓 fresh warning、storm／rain icon、observed rainfall、當前 nowcast、氣溫及一般 icon 按明確優先序獨立判斷
+- [x] 保留評分／安全建議的 freshness 規則、API schema、SSR／PWA／離線及動畫生命週期
+- [x] 修正 neutral safe state 的背景失敗回退，不讓離線／不可用畫面保留上一張衍生天氣圖層
+- [x] 補充 selector、freshness、場景動態切換、失敗回退、reduced-motion 及 Service Worker 測試
+- [x] 實際通過 lint、typecheck、395 項 Vitest、coverage、production build、24 項一般 E2E；新增 SSR→rain 測試及 4 項場景回歸測試亦通過；8 項 PWA E2E 通過
+
+## 2026-08-03：按香港時段顯示 Clear 預設背景
+
+- [x] 首頁改為 dynamic SSR，按香港當刻 period 傳入 OutlookApp；無效時間保守回退 day
+- [x] deriveWeatherScene 支援 fallbackPeriod，僅在 null／無效 generatedAt 時採用 SSR period
+- [x] semantic neutral 維持中性 DOM、severity、動畫及安全 fallback，圖片映射至同時段 clear mobile／desktop 資產
+- [x] 補充 null／無效時間單元測試、neutral clear asset E2E、失敗圖片 fallback 及 viewport 請求驗收
+- [x] 通過 lint、typecheck、400 項 Vitest、25 項一般 Playwright E2E、8 項 PWA E2E 及 production build；首頁列為 dynamic route

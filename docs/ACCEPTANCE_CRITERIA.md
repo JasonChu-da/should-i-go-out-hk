@@ -53,6 +53,10 @@
 - [x] 未來降雨顯示剩餘覆蓋、首個連續雨段、來源時間及近似時間範圍。
 - [x] 香港整體文案使用「香港部分地區」／「十八區代表格點」，不暗示全港每處下雨。
 - [x] Future-only rain 不會把目前 WeatherScene 切成 rain scene。
+- [x] WeatherScene 的圖示、觀測雨量、當前 nowcast 及 warning 各自按 freshness 判斷；單一過期訊號不會封鎖其他新鮮訊號。
+- [x] SSR／loading 可暫時使用 neutral，client payload 完成後能在同一頁切換 clear、rain、storm；API 失敗不殘留上一筆場景或雨線。
+- [x] `prefers-reduced-motion` 只停用非必要動畫，仍保留正確的 clear／rain／storm 場景及背景。
+- [x] 首次 HTML 按香港當刻 `day`／`dusk`／`night` period 顯示同時段 clear 預設圖片；semantic neutral、離線、不可用及資料不足狀態仍不宣稱晴天。
 
 ## 評分
 

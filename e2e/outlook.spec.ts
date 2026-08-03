@@ -289,10 +289,11 @@ for (const viewport of [
       page,
       `/weather/scenes/day/clear-${viewport.layout}.webp`,
     );
-    await expect(page.locator(".weather-background-image")).toHaveJSProperty(
-      "complete",
-      true,
-    );
+    await expect(
+      page.locator(
+        ".weather-background-layer.is-current .weather-background-image",
+      ),
+    ).toHaveJSProperty("complete", true);
 
     expect(requestedBackgrounds).toEqual([
       `/weather/scenes/day/neutral-${viewport.layout}.webp`,
@@ -300,6 +301,35 @@ for (const viewport of [
     ]);
   });
 }
+
+test("目前天氣背景載入完成前持續顯示 neutral 背景", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let releaseBackground!: () => void;
+  const backgroundGate = new Promise<void>((resolve) => {
+    releaseBackground = resolve;
+  });
+  await page.route("**/weather/scenes/day/clear-mobile.webp", async (route) => {
+    await backgroundGate;
+    await route.continue();
+  });
+  await mockOutlookApi(page);
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await page.waitForTimeout(700);
+  await expect(
+    page.locator('.weather-background-layer.is-previous[data-scene="neutral"]'),
+  ).toHaveCSS("opacity", "1");
+  await expect(
+    page.locator('.weather-background-layer.is-current[data-scene="clear"]'),
+  ).toHaveCSS("opacity", "0");
+
+  releaseBackground();
+  await expect(
+    page.locator('.weather-background-layer.is-current[data-scene="clear"]'),
+  ).toHaveCSS("opacity", "1");
+  await expect(page.locator(".weather-background-layer.is-previous")).toHaveCount(0);
+});
 
 test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

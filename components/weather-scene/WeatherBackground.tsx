@@ -22,8 +22,8 @@ interface BackgroundState {
 
 type BackgroundAction =
   | { type: "transition"; scene: BackgroundVisual }
-  | { type: "replace"; scene: BackgroundVisual }
-  | { type: "settle" }
+  | { type: "reveal"; transition: boolean }
+  | { type: "fail" }
   | { type: "finish" };
 
 function backgroundReducer(
@@ -33,10 +33,16 @@ function backgroundReducer(
   switch (action.type) {
     case "transition":
       return { current: action.scene, previous: state.current, entering: true };
-    case "replace":
-      return { current: action.scene, previous: null, entering: false };
-    case "settle":
-      return { ...state, entering: false };
+    case "reveal":
+      return {
+        ...state,
+        entering: false,
+        previous: action.transition ? state.previous : null,
+      };
+    case "fail":
+      return state.previous
+        ? { current: state.previous, previous: null, entering: false }
+        : state;
     case "finish":
       return { ...state, previous: null };
   }
@@ -45,9 +51,13 @@ function backgroundReducer(
 function BackgroundLayer({
   scene,
   className,
+  onError,
+  onLoad,
 }: {
   scene: BackgroundVisual;
   className: string;
+  onError?: () => void;
+  onLoad?: () => void;
 }) {
   const mobile = weatherBackgroundAsset(scene.period, scene.scene, "mobile");
   const desktop = weatherBackgroundAsset(scene.period, scene.scene, "desktop");
@@ -68,9 +78,11 @@ function BackgroundLayer({
           decoding="async"
           onError={(event) => {
             event.currentTarget.style.visibility = "hidden";
+            onError?.();
           }}
           onLoad={(event) => {
             event.currentTarget.style.visibility = "";
+            onLoad?.();
           }}
         />
       </picture>
@@ -103,41 +115,25 @@ export function WeatherBackground({
       period: scenePeriod,
       severity: sceneSeverity,
     };
-    if (displayedKey.current === incomingKey) {
-      if (!transitionEnabled) {
-        dispatch({ type: "replace", scene: nextScene });
-      }
-      return;
-    }
+    if (displayedKey.current === incomingKey) return;
     displayedKey.current = incomingKey;
 
-    if (!transitionEnabled) {
-      dispatch({ type: "replace", scene: nextScene });
-      return;
-    }
-
     dispatch({ type: "transition", scene: nextScene });
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => dispatch({ type: "settle" }));
-    });
-    const finishTimer = window.setTimeout(
-      () => dispatch({ type: "finish" }),
-      650,
-    );
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
-      window.clearTimeout(finishTimer);
-    };
   }, [
     incomingKey,
     sceneName,
     scenePeriod,
     sceneSeverity,
-    transitionEnabled,
   ]);
+
+  useEffect(() => {
+    if (state.entering || !state.previous) return;
+    const finishTimer = window.setTimeout(
+      () => dispatch({ type: "finish" }),
+      650,
+    );
+    return () => window.clearTimeout(finishTimer);
+  }, [state.entering, state.previous]);
 
   return (
     <div
@@ -150,6 +146,10 @@ export function WeatherBackground({
       <BackgroundLayer
         scene={state.current}
         className={state.entering ? "is-current is-entering" : "is-current"}
+        onError={() => dispatch({ type: "fail" })}
+        onLoad={() =>
+          dispatch({ type: "reveal", transition: transitionEnabled })
+        }
       />
     </div>
   );

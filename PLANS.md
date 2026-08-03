@@ -323,3 +323,10 @@
 - [x] Production Playwright 實測 1440×900 只載入兩張 desktop 圖，合計 611,790 transferred／611,190 resource bytes
 - [x] 確認沒有手機／桌面交叉下載，也沒有預載其餘背景矩陣
 - [x] 執行 lint、typecheck、377 項 Vitest、production build、3 項恢復量測及 20 項 production E2E；全部通過
+
+## 2026-08-03：消除天氣背景切換時的藍黑色閃屏
+
+- [x] 追查 loading、hydration、ready 與圖片載入的背景切換流程
+- [x] 保留同一個 WeatherScene，待新背景載入成功後才交接並淡入
+- [x] 新背景載入失敗時保留上一張可用背景
+- [x] 執行 lint、typecheck、377 項 Vitest、production build 及目標 E2E

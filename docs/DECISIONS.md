@@ -295,3 +295,7 @@ Production Playwright 冷快取量測確認首頁原本先下載 neutral，再�
 Production Playwright 實測 390×844 與 430×932 依序只請求 `neutral-mobile.webp`、`clear-mobile.webp`，合計 654,670 transferred／654,070 resource bytes；1440×900 只請求對應兩張 desktop 圖，合計 611,790／611,190 bytes。沒有方向交叉下載或預載其餘 40 張資產，也沒有新增預覽圖、計時器或依賴。
 
 理由：產品明確選擇保留載入期間的完整海港背景，並接受約 303–315 KiB 的額外初始傳輸。沿用既有 neutral 資產與 WeatherScene 是最小且一致的恢復方式；另造低解像度預覽或延遲門檻會增加資產及狀態複雜度。
+
+## 2026-08-03：背景圖片完成載入後才交接
+
+WeatherScene 在 loading 轉 ready 時保持掛載；新場景圖片完成載入後才淡入，載入期間或失敗時保留上一張可用背景，避免純色 fallback 短暫露出。

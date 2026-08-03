@@ -457,7 +457,6 @@ export default function OutlookApp() {
   return (
     <>
     <WeatherScene
-      key={viewStatus === "ready" ? "ready" : "safe"}
       scene={weatherScene}
       motionEnabled={motionEnabled}
       reducedMotion={reducedMotion}

@@ -48,7 +48,7 @@ const sources: SourceMeta[] = ([
 
 describe("mobile UI semantics", () => {
   it("server-renders the initial loading experience without text input", () => {
-    const html = renderToStaticMarkup(<OutlookApp />);
+    const html = renderToStaticMarkup(<OutlookApp initialPeriod="day" />);
 
     expect(html).toContain("香港現在適合出門嗎？");
     expect(html).toContain("正在整理最新官方資料…");

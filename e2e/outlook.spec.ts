@@ -4,7 +4,9 @@ import type {
   RainfallNowcastValue,
 } from "../lib/domain/outlook";
 import type { LocationId } from "../lib/location/districts";
+import type { WeatherPeriod } from "../lib/weather-scene/types";
 import { buildOutlookFixture } from "./fixtures/outlook";
+import { hongKongWeatherPeriod } from "../lib/weather-scene/hong-kong-period";
 
 const APP_ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3100";
 
@@ -72,6 +74,89 @@ async function expectBackgroundSource(page: Page, path: string): Promise<void> {
         ),
     )
     .toBe(path);
+}
+
+async function expectBackgroundSourceOneOf(
+  page: Page,
+  paths: readonly string[],
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const currentPath = await page
+        .locator(".weather-background-layer.is-current .weather-background-image")
+        .evaluate((image: HTMLImageElement) =>
+          image.currentSrc ? new URL(image.currentSrc).pathname : "",
+        );
+      return paths.includes(currentPath);
+    })
+    .toBe(true);
+}
+
+async function expectBackgroundSceneAsset(
+  page: Page,
+  assetScene: string,
+  layout: "mobile" | "desktop",
+): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator(".weather-background-layer.is-current").evaluate(
+        (layer, expected) => {
+          const period = layer.getAttribute("data-period");
+          const image = layer.querySelector(".weather-background-image");
+          const currentPath = image
+            ? (image as HTMLImageElement).currentSrc
+              ? new URL((image as HTMLImageElement).currentSrc).pathname
+              : ""
+            : "";
+          return (
+            period !== null &&
+            currentPath ===
+              `/weather/scenes/${period}/${expected.assetScene}-${expected.layout}.webp`
+          );
+        },
+        { assetScene, layout },
+      ),
+    )
+    .toBe(true);
+}
+
+function clearBackgroundPath(
+  period: WeatherPeriod,
+  layout: "mobile" | "desktop",
+): string {
+  return `/weather/scenes/${period}/clear-${layout}.webp`;
+}
+
+async function expectRainCanvas(page: Page, visible: boolean): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator(".rain-canvas").evaluate((canvas: HTMLCanvasElement) => {
+        if (canvas.width === 0 || canvas.height === 0) return false;
+        const context = canvas.getContext("2d");
+        if (!context) return false;
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        for (let index = 3; index < pixels.length; index += 4) {
+          if (pixels[index] > 0) return true;
+        }
+        return false;
+      }),
+    )
+    .toBe(visible);
+}
+
+async function selectPreviewScene(page: Page, id: string): Promise<void> {
+  const button = page.getByRole("button").filter({ hasText: id });
+  await expect
+    .poll(
+      async () => {
+        if ((await button.getAttribute("aria-pressed")) !== "true") {
+          await button.click();
+        }
+        return button.getAttribute("aria-pressed");
+      },
+      { timeout: 5_000 },
+    )
+    .toBe("true");
 }
 
 function withFutureRain(payload: OutlookPayload): OutlookPayload {
@@ -170,6 +255,31 @@ function withThunderstormWarning(payload: OutlookPayload): OutlookPayload {
   };
 }
 
+function withStaleIconFreshObservedRain(
+  payload: OutlookPayload,
+  rainfallMm = 1.2,
+): OutlookPayload {
+  return {
+    ...payload,
+    weather: {
+      ...payload.weather,
+      conditionIcons: {
+        ...payload.weather.conditionIcons,
+        status: "stale",
+        value: [62],
+        message: "天氣圖示可能已過時，不會單獨用於場景判斷。",
+      },
+      rainfallMm: {
+        ...payload.weather.rainfallMm,
+        status: "fresh",
+        value: rainfallMm,
+        message: "資料在可接受更新時間內。",
+      },
+      icons: [62],
+    },
+  };
+}
+
 function withRecoverableNowcastIssue(
   payload: OutlookPayload,
 ): OutlookPayload {
@@ -254,6 +364,7 @@ for (const viewport of [
     page,
   }) => {
     await page.setViewportSize(viewport);
+    const periodBefore = hongKongWeatherPeriod(new Date().toISOString()) ?? "day";
     const requestedBackgrounds: string[] = [];
     page.on("request", (request) => {
       const pathname = new URL(request.url()).pathname;
@@ -278,11 +389,13 @@ for (const viewport of [
     });
 
     await page.goto("/");
+    const periodAfter = hongKongWeatherPeriod(new Date().toISOString()) ?? "day";
+    const allowedInitialPaths = [
+      clearBackgroundPath(periodBefore, viewport.layout),
+      clearBackgroundPath(periodAfter, viewport.layout),
+    ];
     await expect(page.locator('main[data-outlook-state="loading"]')).toBeVisible();
-    await expectBackgroundSource(
-      page,
-      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
-    );
+    await expectBackgroundSourceOneOf(page, allowedInitialPaths);
     releaseApi();
     await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
     await expectBackgroundSource(
@@ -295,10 +408,15 @@ for (const viewport of [
       ),
     ).toHaveJSProperty("complete", true);
 
-    expect(requestedBackgrounds).toEqual([
-      `/weather/scenes/day/neutral-${viewport.layout}.webp`,
+    expect(
+      allowedInitialPaths.some((path) => requestedBackgrounds.includes(path)),
+    ).toBe(true);
+    expect(requestedBackgrounds).toContain(
       `/weather/scenes/day/clear-${viewport.layout}.webp`,
-    ]);
+    );
+    expect(requestedBackgrounds.some((path) => path.includes("/neutral-"))).toBe(
+      false,
+    );
   });
 }
 
@@ -340,10 +458,16 @@ test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ p
 
   await page.goto("/");
   await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
-  await expect(page.locator(".weather-background-image")).toHaveCSS(
-    "visibility",
-    "hidden",
-  );
+  await expect
+    .poll(() =>
+      page.locator(".weather-background-image").evaluateAll((images) =>
+        images.length > 0 &&
+        images.every(
+          (image) => getComputedStyle(image).visibility === "hidden",
+        ),
+      ),
+    )
+    .toBe(true);
   await expect(page.locator(".weather-background")).toHaveCSS(
     "background-color",
     "rgb(6, 24, 39)",
@@ -370,10 +494,10 @@ test("Weather Scene Preview 可驗收全部 21 個背景狀態", async ({ page }
       "neutral",
     ]) {
       const id = `${scene}-${period}`;
-      await page.getByRole("button").filter({ hasText: id }).click();
+      await selectPreviewScene(page, id);
       await expectBackgroundSource(
         page,
-        `/weather/scenes/${period}/${scene}-desktop.webp`,
+        `/weather/scenes/${period}/${scene === "neutral" ? "clear" : scene}-desktop.webp`,
       );
     }
   }
@@ -392,6 +516,118 @@ test("切換地區後請求及判斷結果一併更新", async ({ page }) => {
   );
   await expect(page.locator("#result-title")).toBeFocused();
   expect(requestedLocations).toContain("central-and-western");
+});
+
+test("同一頁面可由 clear 切換 rain、storm 再回到 clear", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockOutlookApi(page, (locationId) => {
+    if (locationId === "central-and-western") {
+      return withStaleIconFreshObservedRain(buildOutlookFixture(locationId));
+    }
+    if (locationId === "wan-chai") {
+      return withThunderstormWarning(buildOutlookFixture(locationId));
+    }
+    return buildOutlookFixture(locationId);
+  });
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "clear");
+  await expectBackgroundSource(page, "/weather/scenes/day/clear-mobile.webp");
+  await expectRainCanvas(page, false);
+
+  await page.getByRole("button", { name: /香港整體/ }).click();
+  await page.getByRole("button", { name: "中西區" }).click();
+  await expect(page.locator(".location-name")).toHaveText("中西區");
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "rain");
+  await expectBackgroundSource(page, "/weather/scenes/day/rain-mobile.webp");
+  await expectRainCanvas(page, true);
+
+  await page.getByRole("button", { name: /中西區/ }).click();
+  await page.getByRole("button", { name: "灣仔" }).click();
+  await expect(page.locator(".location-name")).toHaveText("灣仔");
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "storm");
+  await expectBackgroundSource(page, "/weather/scenes/day/storm-mobile.webp");
+  await expectRainCanvas(page, true);
+
+  await page.getByRole("button", { name: /灣仔/ }).click();
+  await page.getByRole("button", { name: "沙田" }).click();
+  await expect(page.locator(".location-name")).toHaveText("沙田");
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "clear");
+  await expectBackgroundSource(page, "/weather/scenes/day/clear-mobile.webp");
+  await expectRainCanvas(page, false);
+});
+
+test("SSR neutral 會在 client 取得新鮮降雨後切換 rain", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const periodBefore = hongKongWeatherPeriod(new Date().toISOString()) ?? "day";
+  const backgroundRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith("/weather/scenes/") && pathname.endsWith(".webp")) {
+      backgroundRequests.push(pathname);
+    }
+  });
+  let releaseApi!: () => void;
+  const apiGate = new Promise<void>((resolve) => {
+    releaseApi = resolve;
+  });
+  await page.route("**/api/outlook?*", async (route) => {
+    await apiGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify(
+        withStaleIconFreshObservedRain(buildOutlookFixture("hong-kong")),
+      ),
+    });
+  });
+
+  await page.goto("/");
+  const periodAfter = hongKongWeatherPeriod(new Date().toISOString()) ?? "day";
+  await expect(page.locator('main[data-outlook-state="loading"]')).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "neutral");
+  await expectBackgroundSourceOneOf(page, [
+    clearBackgroundPath(periodBefore, "mobile"),
+    clearBackgroundPath(periodAfter, "mobile"),
+  ]);
+  expect(backgroundRequests.some((path) => path.includes("/neutral-"))).toBe(false);
+  expect(backgroundRequests.some((path) => path.endsWith("clear-mobile.webp"))).toBe(true);
+  expect(backgroundRequests.some((path) => path.endsWith("clear-desktop.webp"))).toBe(false);
+
+  releaseApi();
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "rain");
+  await expectBackgroundSource(page, "/weather/scenes/day/rain-mobile.webp");
+  await expectRainCanvas(page, true);
+});
+
+test("資料取得失敗時由 rain 回到 neutral 且不殘留雨線", async ({ page }) => {
+  let failWanChai = false;
+  await mockOutlookApi(page, (locationId) => {
+    if (locationId === "central-and-western") {
+      return withStaleIconFreshObservedRain(buildOutlookFixture(locationId));
+    }
+    if (locationId === "wan-chai" && failWanChai) {
+      return { status: "ok", message: "測試用不完整回應" };
+    }
+    return buildOutlookFixture(locationId);
+  });
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await page.getByRole("button", { name: /香港整體/ }).click();
+  await page.getByRole("button", { name: "中西區" }).click();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "rain");
+  await expectRainCanvas(page, true);
+
+  failWanChai = true;
+  await page.getByRole("button", { name: /中西區/ }).click();
+  await page.getByRole("button", { name: "灣仔" }).click();
+  await expect(page.locator('main[data-outlook-state="unavailable"]')).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "neutral");
+  await expectBackgroundSceneAsset(page, "clear", "desktop");
+  await expectRainCanvas(page, false);
 });
 
 test("切換外出模式後立即重新計分", async ({ page }) => {
@@ -741,7 +977,20 @@ test("主要互動可用鍵盤操作且 focus 樣式可見", async ({ page }) =>
 
 test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await openSuccessfulHomepage(page);
+  await mockOutlookApi(page, () =>
+    withStaleIconFreshObservedRain(buildOutlookFixture("hong-kong")),
+  );
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator(".weather-scene")).toHaveAttribute(
+    "data-scene",
+    "rain",
+  );
+  await expectBackgroundSource(
+    page,
+    "/weather/scenes/day/rain-desktop.webp",
+  );
+  await expectRainCanvas(page, false);
 
   await expect(page.locator(".weather-scene")).toHaveAttribute("data-motion", "off");
   await expect(

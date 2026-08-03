@@ -1,8 +1,11 @@
-import type {
-  NormalizedMetric,
-  NormalizedWarning,
-  OverallDataStatus,
-  SourceStatus,
+import {
+  RAINFALL_NOWCAST_SIGNAL_MM,
+  type NormalizedMetric,
+  type NormalizedWarning,
+  type OverallDataStatus,
+  type RainfallNowcastPeriod,
+  type RainfallNowcastValue,
+  type SourceStatus,
 } from "@/lib/domain/outlook";
 import { findHighestPriorityWeatherIcon } from "@/lib/weather-scene/weather-icon-map";
 import { hongKongWeatherPeriod } from "@/lib/weather-scene/hong-kong-period";
@@ -71,6 +74,9 @@ export interface WeatherSceneData {
     isSnapshotComplete: boolean;
     source: { status: SourceStatus };
   };
+  rainfallNowcast: {
+    forecast: NormalizedMetric<RainfallNowcastValue>;
+  };
 }
 
 function precipitationForRainfall(rainfallMm: number): WeatherPrecipitation {
@@ -85,6 +91,49 @@ function strongestPrecipitation(
   right: WeatherPrecipitation,
 ): WeatherPrecipitation {
   return PRECIPITATION_ORDER[left] >= PRECIPITATION_ORDER[right] ? left : right;
+}
+
+function currentNowcastPeriod(
+  value: RainfallNowcastValue,
+  generatedAt: string,
+): RainfallNowcastPeriod | null {
+  const generatedAtMs = Date.parse(generatedAt);
+  if (!Number.isFinite(generatedAtMs)) return null;
+
+  return (
+    value.periods.find((period) => {
+      const periodStartMs = Date.parse(period.periodStartAt);
+      const periodEndMs = Date.parse(period.periodEndAt);
+      return (
+        Number.isFinite(periodStartMs) &&
+        Number.isFinite(periodEndMs) &&
+        periodStartMs <= generatedAtMs &&
+        generatedAtMs < periodEndMs
+      );
+    }) ?? null
+  );
+}
+
+function freshRainfallPrecipitation(
+  metric: NormalizedMetric<number>,
+): WeatherPrecipitation {
+  return metric.status === "fresh" && metric.value !== null
+    ? precipitationForRainfall(metric.value)
+    : "none";
+}
+
+function freshNowcastPrecipitation(
+  metric: NormalizedMetric<RainfallNowcastValue>,
+  generatedAt: string,
+): WeatherPrecipitation {
+  if (metric.status !== "fresh" || metric.value === null) return "none";
+
+  const period = currentNowcastPeriod(metric.value, generatedAt);
+  if (period === null || period.rainfallMm < RAINFALL_NOWCAST_SIGNAL_MM) {
+    return "none";
+  }
+
+  return precipitationForRainfall(period.rainfallMm);
 }
 
 function neutral(period: WeatherPeriod, reason: string): WeatherSceneResult {
@@ -136,6 +185,20 @@ export function getWeatherSceneVisualKey(scene: WeatherSceneResult): string {
  */
 export function deriveWeatherScene(
   weatherData: WeatherSceneData | null,
+  fallbackPeriod: WeatherPeriod = "day",
+): WeatherSceneResult {
+  const scene = deriveWeatherSceneInternal(weatherData);
+  if (
+    weatherData === null ||
+    hongKongWeatherPeriod(weatherData.generatedAt) === null
+  ) {
+    return { ...scene, period: fallbackPeriod };
+  }
+  return scene;
+}
+
+function deriveWeatherSceneInternal(
+  weatherData: WeatherSceneData | null,
 ): WeatherSceneResult {
   if (weatherData === null) {
     return neutral("day", "尚未取得可驗證的天氣資料。");
@@ -150,31 +213,19 @@ export function deriveWeatherScene(
     return neutral(period, "官方天氣資料目前不可用。");
   }
 
-  if (
-    weatherData.warnings.source.status !== "ok" ||
-    !weatherData.warnings.isSnapshotComplete
-  ) {
-    return neutral(period, "未能完整確認目前天氣警告，停用動態天氣背景。");
-  }
+  const { conditionIcons, rainfallMm, temperatureC } = weatherData.weather;
+  const warningSourceUsable = weatherData.warnings.source.status === "ok";
+  const warningRule = warningSourceUsable
+    ? highestPriorityWarning(weatherData.warnings.items)
+    : null;
 
-  if (hasUnknownActiveWarning(weatherData.warnings.items)) {
-    return neutral(period, "有未能識別的生效警告，不推測目前天氣場景。");
-  }
-
-  const warningRule = highestPriorityWarning(weatherData.warnings.items);
-  if (warningRule) {
-    const measuredPrecipitation =
-      weatherData.weather.rainfallMm.status === "fresh" &&
-      weatherData.weather.rainfallMm.value !== null
-        ? precipitationForRainfall(weatherData.weather.rainfallMm.value)
-        : "none";
-
+  if (warningRule?.scene === "storm") {
     return {
-      scene: warningRule.scene,
+      scene: "storm",
       period,
       precipitation: strongestPrecipitation(
         warningRule.precipitation,
-        measuredPrecipitation,
+        freshRainfallPrecipitation(rainfallMm),
       ),
       severity: warningRule.severity,
       animationEnabled: true,
@@ -182,15 +233,30 @@ export function deriveWeatherScene(
     };
   }
 
-  const { conditionIcons, rainfallMm, temperatureC } = weatherData.weather;
-  if (conditionIcons.status !== "fresh" || conditionIcons.value === null) {
-    return neutral(period, "天氣圖示缺失、格式異常或已過時，不推測目前天氣。");
-  }
-  if (rainfallMm.status !== "fresh" || rainfallMm.value === null) {
-    return neutral(period, "地區雨量缺失、格式異常或已過時，不推測目前雨勢。");
+  if (warningSourceUsable && hasUnknownActiveWarning(weatherData.warnings.items)) {
+    return neutral(period, "有未能識別的生效警告，不推測目前天氣場景。");
   }
 
-  const rainfallPrecipitation = precipitationForRainfall(rainfallMm.value);
+  const iconRule =
+    conditionIcons.status === "fresh" && conditionIcons.value !== null
+      ? findHighestPriorityWeatherIcon(conditionIcons.value)
+      : null;
+
+  if (iconRule?.scene === "storm") {
+    return {
+      scene: "storm",
+      period,
+      precipitation: strongestPrecipitation(
+        iconRule.precipitation,
+        freshRainfallPrecipitation(rainfallMm),
+      ),
+      severity: iconRule.severity,
+      animationEnabled: true,
+      reason: `香港天文台天氣圖示顯示${iconRule.caption}。`,
+    };
+  }
+
+  const rainfallPrecipitation = freshRainfallPrecipitation(rainfallMm);
   if (rainfallPrecipitation !== "none") {
     return {
       scene: "rain",
@@ -202,14 +268,44 @@ export function deriveWeatherScene(
     };
   }
 
-  const iconRule = findHighestPriorityWeatherIcon(conditionIcons.value);
-  if (iconRule === null) {
-    return neutral(period, "現有天氣圖示不足以可靠判斷場景。");
+  const nowcastPrecipitation = freshNowcastPrecipitation(
+    weatherData.rainfallNowcast.forecast,
+    weatherData.generatedAt,
+  );
+  if (nowcastPrecipitation !== "none") {
+    return {
+      scene: "rain",
+      period,
+      precipitation: nowcastPrecipitation,
+      severity: nowcastPrecipitation === "heavy" ? "caution" : "normal",
+      animationEnabled: true,
+      reason: "目前半小時降雨臨近預報達到降雨場景門檻。",
+    };
+  }
+
+  if (iconRule?.scene === "rain") {
+    return {
+      scene: "rain",
+      period,
+      precipitation: iconRule.precipitation,
+      severity: iconRule.severity,
+      animationEnabled: true,
+      reason: `香港天文台天氣圖示顯示${iconRule.caption}。`,
+    };
+  }
+
+  if (warningRule?.scene === "hot") {
+    return {
+      scene: "hot",
+      period,
+      precipitation: "none",
+      severity: warningRule.severity,
+      animationEnabled: true,
+      reason: warningRule.reason,
+    };
   }
 
   if (
-    iconRule.scene !== "rain" &&
-    iconRule.scene !== "storm" &&
     temperatureC.status === "fresh" &&
     temperatureC.value !== null &&
     temperatureC.value >= HOT_TEMPERATURE_C
@@ -224,15 +320,16 @@ export function deriveWeatherScene(
     };
   }
 
-  return {
-    scene: iconRule.scene,
-    period,
-    precipitation:
-      iconRule.scene === "rain" || iconRule.scene === "storm"
-        ? iconRule.precipitation
-        : "none",
-    severity: iconRule.severity,
-    animationEnabled: true,
-    reason: `香港天文台天氣圖示顯示${iconRule.caption}。`,
-  };
+  if (iconRule !== null) {
+    return {
+      scene: iconRule.scene,
+      period,
+      precipitation: "none",
+      severity: iconRule.severity,
+      animationEnabled: true,
+      reason: `香港天文台天氣圖示顯示${iconRule.caption}。`,
+    };
+  }
+
+  return neutral(period, "沒有新鮮的天氣圖示、即時雨量或當前短時降雨訊號。");
 }

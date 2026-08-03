@@ -470,6 +470,41 @@ test("service worker headers、控制狀態及 Cache Storage allowlist 正確", 
   await expect(page.getByRole("heading", { name: "目前離線" })).toHaveCount(0);
 });
 
+test("Service Worker 不會從 Cache Storage 提供舊的天氣 payload", async ({
+  page,
+}) => {
+  await openReadyHomepage(page);
+  await waitForController(page);
+
+  const stalePayload = buildOutlookFixture("hong-kong");
+  await page.evaluate(async (payload) => {
+    const cache = await caches.open("manual-stale-weather");
+    await cache.put(
+      "/api/outlook?location=hong-kong",
+      new Response(JSON.stringify(payload), {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }, stalePayload);
+
+  apiMode = {
+    type: "payload",
+    payload: buildOutlookFixture("central-and-western"),
+  };
+  try {
+    await page.reload();
+    await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+    await expect(page.locator("main")).toHaveAttribute("data-scene", "rain");
+    expect(
+      (await cachedResponses(page)).some(({ url }) =>
+        new URL(url).pathname.startsWith("/api/"),
+      ),
+    ).toBe(false);
+  } finally {
+    await page.evaluate(() => caches.delete("manual-stale-weather"));
+  }
+});
+
 test("已載入頁面區分離線與服務不可用，並只在真實成功後恢復", async ({
   context,
   page,

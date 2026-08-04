@@ -97,20 +97,22 @@ npm run lint
 npm run typecheck
 npm test
 npm run test:coverage
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:e2e
 npm run build
 npm run test:e2e:pwa
 npm run start
 ```
 
-`npm run test:coverage` 會量測核心業務程式碼並在 `coverage/` 產生 HTML 與 JSON summary；最低門檻定義於 `vitest.config.ts`。Playwright 的 Chromium binary 每個開發環境只需安裝一次，`npm run test:e2e` 會自行在 `http://127.0.0.1:3100` 啟動及關閉 Next.js 開發伺服器。
+`npm run test:coverage` 會量測核心業務程式碼及有條件分支的主要 React components，並在 `coverage/` 產生 HTML 與 JSON summary；最低門檻定義於 `vitest.config.ts`。Playwright 的 Chromium 及 WebKit binary 每個開發環境只需安裝一次，`npm run test:e2e` 會在兩個 browser projects 執行，並自行在 `http://127.0.0.1:3100` 啟動及關閉 Next.js 開發伺服器。
 
 Vitest 與 Playwright 全部使用本地 fixture／route interception，不依賴政府 API 即時狀態。`npm run start` 需先成功執行 `npm run build`。
 
+一般 E2E 會以 axe-core 掃描首頁正常、離線、資料不可用及地區浮層狀態的 WCAG 2 A／AA 可自動判定規則。自動掃描不能判斷文案是否易懂、鍵盤流程是否合乎實際使用習慣、螢幕閱讀器體驗或所有視覺對比情境，不能取代人工及實機無障礙審核。
+
 測試檔案及案例數以每次 `npm test` 的輸出為準，不作固定驗收門檻。最近一次快照為 2026-08-02、程式 commit `14a0ba8`：21 個 Vitest test files、377 項測試全部通過；之後新增或刪除測試時應以新輸出取代這個快照。
 
-`npm run test:e2e:pwa` 必須在 `npm run build` 之後執行。它以獨立 production server 及本機 proxy 驗證 manifest、安裝條件、service worker headers／生命週期、靜態 cache、真正離線、重新連線，以及同一 `/sw.js` URL 從 v1 更新至 v2 的 waiting／activate 行為。它不使用已 deprecated 的 Lighthouse PWA audit。
+`npm run test:e2e:pwa` 必須在 `npm run build` 之後執行。它以獨立 production server 及本機 proxy 驗證 manifest、安裝條件、service worker headers／生命週期、靜態 cache、真正離線、重新連線，以及同一 `/sw.js` URL 從 v1 更新至 v2 的 waiting／activate 行為。Playwright 只在 Chromium-based browser 支援 Service Worker 測試，因此這組 PWA E2E 明確維持 Chromium-only，不會把 WebKit 未支援的 API 假裝成通過；它亦不使用已 deprecated 的 Lighthouse PWA audit。
 
 正常本機環境直接執行 `npm run test:e2e` 即可，由 Playwright 管理測試 server。若 CI／sandbox 已另行管理 server，可把其 origin 傳入 `PLAYWRIGHT_BASE_URL`，Playwright 便不會重複啟動 server。
 

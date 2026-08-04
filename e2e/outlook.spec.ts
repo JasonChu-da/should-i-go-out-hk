@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import type {
   OutlookPayload,
@@ -62,6 +63,20 @@ async function openSuccessfulHomepage(page: Page): Promise<string[]> {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "可以出門，但需要準備" })).toBeVisible();
   return requestedLocations;
+}
+
+async function expectNoA11yViolations(page: Page): Promise<void> {
+  const { violations } = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+
+  expect(
+    violations.map(({ id, impact, nodes }) => ({
+      id,
+      impact,
+      targets: nodes.map((node) => node.target),
+    })),
+  ).toEqual([]);
 }
 
 async function expectBackgroundSource(page: Page, path: string): Promise<void> {
@@ -336,6 +351,16 @@ test("首頁載入並顯示完整外出判斷", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "生效中的天氣警告" })).toHaveCount(0);
   await expect(page.getByText("5 個資料來源可用")).toBeVisible();
   await expectBackgroundSource(page, "/weather/scenes/day/clear-desktop.webp");
+  await expectNoA11yViolations(page);
+});
+
+test("離線狀態沒有 axe 可偵測的無障礙問題", async ({ page }) => {
+  await openSuccessfulHomepage(page);
+
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.locator('main[data-outlook-state="offline"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "無法取得即時天氣" })).toBeVisible();
+  await expectNoA11yViolations(page);
 });
 
 test("picture 按 viewport 載入原生手機或桌面背景", async ({ page }) => {
@@ -825,6 +850,7 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   expect(mobileLayout.documentScrollWidth).toBeLessThanOrEqual(
     mobileLayout.innerWidth,
   );
+  await expectNoA11yViolations(page);
 });
 
 test("未來一小時雨訊號更新 Hero 及降雨卡，但不把背景當作正在下雨", async ({
@@ -963,6 +989,7 @@ test("API 格式錯誤顯示失敗狀態，重試後恢復", async ({ page }) =>
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "重新載入資料" })).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
+  await expectNoA11yViolations(page);
 
   recover = true;
   await page.getByRole("button", { name: "重新載入資料" }).click();
@@ -971,11 +998,20 @@ test("API 格式錯誤顯示失敗狀態，重試後恢復", async ({ page }) =>
   await expect(page.locator("#result-title")).toBeFocused();
 });
 
-test("主要互動可用鍵盤操作且 focus 樣式可見", async ({ page }) => {
+test("主要互動可用鍵盤操作且 focus 樣式可見", async ({ browserName, page }) => {
   await openSuccessfulHomepage(page);
 
-  await page.keyboard.press("Tab");
   const skipLink = page.getByRole("link", { name: "跳至主要內容" });
+  if (browserName === "webkit") {
+    test.info().annotations.push({
+      type: "browser limitation",
+      description:
+        "Playwright WebKit cannot enable Safari's full keyboard access preference, so the skip-link starts from explicit focus.",
+    });
+    await skipLink.focus();
+  } else {
+    await page.keyboard.press("Tab");
+  }
   await expect(skipLink).toBeFocused();
   await expect(skipLink).toHaveCSS("opacity", "1");
   await expect(skipLink).toHaveCSS("outline-style", "solid");

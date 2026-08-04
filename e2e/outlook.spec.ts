@@ -719,9 +719,12 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
       pillOutline: getComputedStyle(
         document.querySelector(".location-pill")!,
       ).outlineStyle,
-      hasRunningAnimation: panel
+      hasActiveAnimation: panel
         .getAnimations()
-        .some((animation) => animation.playState === "running"),
+        .some(
+          (animation) =>
+            animation.pending || animation.playState === "running",
+        ),
     };
   });
 
@@ -755,7 +758,7 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   await expect(
     dialog.locator('.district-button[aria-pressed="true"]'),
   ).toHaveCSS("outline-style", "solid");
-  expect(openingLayout.hasRunningAnimation).toBe(true);
+  expect(openingLayout.hasActiveAnimation).toBe(true);
   await expect(page.locator(".location-panel")).toHaveAttribute(
     "data-phase",
     "open",

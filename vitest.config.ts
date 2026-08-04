@@ -8,7 +8,11 @@ export default defineConfig({
       provider: "v8",
       reportsDirectory: "./coverage",
       reporter: ["text", "html", "json-summary"],
-      include: ["lib/**/*.{ts,tsx}", "app/api/**/*.ts"],
+      include: [
+        "lib/**/*.{ts,tsx}",
+        "app/api/**/*.ts",
+        "components/{DataCards,LocationControls,ModeTabs,ResultHero,SourceDetails,States,WarningsPanel}.tsx",
+      ],
       exclude: [
         "**/*.d.ts",
         "**/*.test.{ts,tsx}",

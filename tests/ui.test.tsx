@@ -175,6 +175,57 @@ describe("mobile UI semantics", () => {
     expect(html).toContain("13:55");
   });
 
+  it("explains an active nowcast period without scaling its full half-hour rainfall", () => {
+    const payload = buildOutlookFixture("wan-chai");
+    const value = payload.rainfallNowcast.forecast.value;
+    if (!value) throw new Error("測試 fixture 缺少降雨臨近預報");
+    value.periods[0].rainfallMm = 2.4;
+    value.periods[0].isPartiallyElapsed = true;
+    value.firstRainWindow = { firstPeriodIndex: 0, lastPeriodIndex: 0 };
+    value.peakRainPeriodIndex = 0;
+
+    const html = renderToStaticMarkup(
+      <DataCards
+        weather={payload.weather}
+        aqhi={payload.aqhi}
+        rainfallNowcast={payload.rainfallNowcast}
+        location={payload.location}
+        generatedAt={payload.generatedAt}
+      />,
+    );
+
+    expect(html).toContain("灣仔目前這個半小時預報時段有降雨訊號");
+    expect(html).toContain("完整半小時預測雨量約 2.4 毫米");
+    expect(html).toContain("部分時段已經過去");
+    expect(html).toContain("進行中");
+  });
+
+  it("shows explicit unavailable states instead of fallback metric values", () => {
+    const payload = buildOutlookFixture();
+    payload.weather.temperatureC.value = null;
+    payload.weather.humidityPercent.value = null;
+    payload.weather.rainfallMm.value = null;
+    payload.weather.uvIndex.value = null;
+    payload.aqhi.aqhi.value = null;
+    payload.rainfallNowcast.forecast.status = "failed";
+    payload.rainfallNowcast.forecast.value = null;
+
+    const html = renderToStaticMarkup(
+      <DataCards
+        weather={payload.weather}
+        aqhi={payload.aqhi}
+        rainfallNowcast={payload.rainfallNowcast}
+        location={payload.location}
+        generatedAt={payload.generatedAt}
+      />,
+    );
+
+    expect(html).not.toContain("NaN");
+    expect(html).not.toContain("undefined");
+    expect(html).toContain(payload.weather.temperatureC.message);
+    expect(html).toContain(payload.rainfallNowcast.forecast.message);
+  });
+
   it("shows confirmed warning items even when another item is malformed", () => {
     const clear = buildOutlookFixture();
     const active = buildOutlookFixture();
@@ -223,6 +274,82 @@ describe("mobile UI semantics", () => {
     expect(html).toContain("<details");
     expect(html).toContain("本港預報與提示");
     expect(html).toContain("大致天晴，部分時間有陽光。");
+  });
+
+  it("renders unavailable scoring, factors and ignored data without a score gauge", () => {
+    const unavailable: ScoringResult = {
+      score: null,
+      verdict: "unavailable",
+      verdictLabel: "暫時未能判斷",
+      summary: "未能確認必要資料。",
+      recommendations: ["稍後重試。", "查看天文台。", "留意警告。", "不應顯示。"],
+      factors: [
+        {
+          id: "warning",
+          label: "天氣警告",
+          detail: "警告資料不可用。",
+          penalty: 0,
+          cap: null,
+          priority: 1,
+          recommendation: null,
+        },
+      ],
+      ignoredFactors: [
+        {
+          id: "humidity",
+          label: "濕度",
+          status: "missing",
+          message: "資料暫時不可用。",
+        },
+      ],
+      isLimited: true,
+    };
+    const html = renderToStaticMarkup(
+      <ResultHero result={unavailable} mode="laundry" />,
+    );
+
+    expect(html).toContain("晾衫評估");
+    expect(html).toContain("暫未能評分");
+    expect(html).not.toContain('role="progressbar"');
+    expect(html).toContain("天氣警告");
+    expect(html).toContain("未有計分的資料");
+    expect(html).toContain("濕度：資料暫時不可用。");
+    expect(html).not.toContain("不應顯示。");
+  });
+
+  it("labels stale and unavailable sources and reports recoverable issues", () => {
+    const degraded = sources.map((source, index) => ({
+      ...source,
+      status: index === 0 ? ("stale" as const) : ("unavailable" as const),
+      publishedAt: index === 1 ? null : source.publishedAt,
+      issues: index === 2 ? ["測試欄位異常"] : [],
+    }));
+    const html = renderToStaticMarkup(<SourceDetails sources={degraded} />);
+
+    expect(html).toContain("0 個資料來源可用");
+    expect(html).toContain("可能已過時");
+    expect(html).toContain("暫時不可用");
+    expect(html).toContain("部分欄位未能讀取（1 項）");
+  });
+
+  it("explains stale warnings and degraded forecast content", () => {
+    const payload = buildOutlookFixture();
+    payload.warnings.source.status = "stale";
+    payload.forecast.description.status = "stale";
+    payload.forecast.description.publishedAt = null;
+    payload.weather.specialWeatherTips = ["測試特別提示"];
+
+    const warningsHtml = renderToStaticMarkup(
+      <ActiveWarnings warnings={payload.warnings} />,
+    );
+    const forecastHtml = renderToStaticMarkup(
+      <ForecastDetails forecast={payload.forecast} weather={payload.weather} />,
+    );
+
+    expect(warningsHtml).toContain("警告快照可能已過時");
+    expect(forecastHtml).toContain("暫無更新時間");
+    expect(forecastHtml).toContain("可能已過時");
+    expect(forecastHtml).toContain("測試特別提示");
   });
 
   it("only exposes the star layer for a verified clear night", () => {

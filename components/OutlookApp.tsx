@@ -412,13 +412,41 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
   useEffect(() => {
     if (!pickerExpanded) return;
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      closePicker(true);
+    const panel = locationPanel.current;
+    panel
+      ?.querySelector<HTMLElement>('.district-button[aria-pressed="true"]')
+      ?.focus();
+
+    const containFocus = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closePicker(true);
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.closest("[inert]"));
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", containFocus);
+    return () => window.removeEventListener("keydown", containFocus);
   }, [closePicker, pickerExpanded]);
 
   const viewStatus = routeResponse.status;
@@ -442,7 +470,6 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
 
   const selectLocation = (nextLocationId: LocationId) => {
     manualSelection.current = true;
-    shouldMoveFocus.current = true;
     currentLocationId.current = nextLocationId;
     setLocationId(nextLocationId);
     setLocationStatus("manual");
@@ -474,7 +501,9 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
       motionEnabled={motionEnabled}
       reducedMotion={reducedMotion}
     />
-    <a className="skip-link" href="#main-content">跳至主要內容</a>
+    <a className="skip-link" href="#main-content" inert={pickerMounted}>
+      跳至主要內容
+    </a>
     <main
       className="app-shell"
       id="main-content"
@@ -483,7 +512,7 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
       data-scene={weatherScene.scene}
       data-period={weatherScene.period}
     >
-      <header className="site-header">
+      <header className="site-header" inert={pickerMounted}>
         <div className="site-header-copy">
           <p className="brand-kicker">出門前，望一望</p>
           <h1>香港現在適合出門嗎？</h1>
@@ -553,23 +582,24 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
         </LocationControls>
       </div>
 
-      {loading ? <LoadingState /> : null}
+      <div className="app-content" inert={pickerMounted}>
+        {loading ? <LoadingState /> : null}
 
-      {viewStatus === "offline" ? (
+        {viewStatus === "offline" ? (
         <DataFailureState
           kind="offline"
           lastPublicUpdate={lastPublicUpdate}
           onRetry={retry}
         />
-      ) : null}
+        ) : null}
 
-      {viewStatus === "unavailable" ? (
+        {viewStatus === "unavailable" ? (
         <DataFailureState
           kind="unavailable"
           lastPublicUpdate={lastPublicUpdate}
           onRetry={retry}
         />
-      ) : null}
+        ) : null}
 
       {partialNotice ? (
         <div className="partial-banner" role="status">
@@ -615,6 +645,7 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
           <a href="https://www.aqhi.gov.hk/tc.html" target="_blank" rel="noreferrer">空氣質素健康指數<span className="sr-only">（在新分頁開啟）</span></a>
         </div>
       </footer>
+      </div>
     </main>
     </>
   );

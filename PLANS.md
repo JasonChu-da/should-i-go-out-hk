@@ -369,3 +369,9 @@
 - [x] 集中保守合理範圍；超界一般天氣欄位按 metric 降級，不 clamp 或拖垮其他觀測
 - [x] 一般模式高溫且濕度缺失／異常時，把濕度列入 ignored data，不改完整資料評分
 - [x] 補齊範圍、非有限數字、缺失值及高溫濕度回歸測試；lint、typecheck、425 項 Vitest、build、coverage 及 diff check 全部通過
+
+## 2026-08-04：地區選擇浮層 accessibility 與左右 safe-area
+
+- [x] 加入 dialog 語義、初始焦點、焦點圈限、Escape 關閉、焦點恢復及背景 inert
+- [x] 讓主內容左右間距納入 safe-area inset，同時保留一般裝置既有視覺比例
+- [x] 補充 UI／E2E 回歸測試；通過 lint、typecheck、425 項 Vitest、build、25 項一般 E2E、10 項 PWA E2E 及 diff check

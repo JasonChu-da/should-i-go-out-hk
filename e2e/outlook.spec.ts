@@ -514,7 +514,7 @@ test("切換地區後請求及判斷結果一併更新", async ({ page }) => {
   await expect(page.locator(".result-summary")).toHaveText(
     "錄得 5 毫米雨量，一般外出扣 3 分。",
   );
-  await expect(page.locator("#result-title")).toBeFocused();
+  await expect(page.locator(".location-pill")).toBeFocused();
   expect(requestedLocations).toContain("central-and-western");
 });
 
@@ -695,12 +695,35 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   });
 
   await expect(picker).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "地區及活動選擇" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(
+    dialog.locator('.district-button[aria-pressed="true"]'),
+  ).toBeFocused();
+  await expect(page.locator(".site-header")).toHaveAttribute("inert", "");
+  await expect(page.locator(".app-content")).toHaveAttribute("inert", "");
+
+  const motionToggle = page.locator(".motion-toggle");
+  await motionToggle.evaluate((element: HTMLButtonElement) => element.focus());
+  await expect(motionToggle).not.toBeFocused();
+
+  const lastDistrict = page.getByRole("button", { name: "離島區" });
+  await lastDistrict.focus();
+  await page.keyboard.press("Tab");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(lastDistrict).toBeFocused();
+
   expect(openingLayout.phase).toBe("opening");
   expect(openingLayout.panelWidth).toBeGreaterThan(collapsedWidth);
   expect(openingLayout.panelWidth).toBeLessThan(openingLayout.shellWidth);
   expect(openingLayout.panelRadius).toBe("25px");
-  expect(openingLayout.panelOutline).toBe("solid");
+  expect(openingLayout.panelOutline).toBe("none");
   expect(openingLayout.pillOutline).toBe("none");
+  await expect(
+    dialog.locator('.district-button[aria-pressed="true"]'),
+  ).toHaveCSS("outline-style", "solid");
   expect(openingLayout.hasRunningAnimation).toBe(true);
   await expect(page.locator(".location-panel")).toHaveAttribute(
     "data-phase",
@@ -708,7 +731,9 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   );
 
   const desktopLayout = await page.evaluate(() => {
-    const shell = document.querySelector(".app-shell")!.getBoundingClientRect();
+    const shellElement = document.querySelector(".app-shell")!;
+    const shell = shellElement.getBoundingClientRect();
+    const shellStyle = getComputedStyle(shellElement);
     const panel = document
       .querySelector('.location-panel[data-open="true"]')!
       .getBoundingClientRect();
@@ -717,6 +742,10 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
       .getBoundingClientRect();
     return {
       shellWidth: shell.width,
+      shellContentWidth:
+        shell.width -
+        parseFloat(shellStyle.paddingLeft) -
+        parseFloat(shellStyle.paddingRight),
       panelWidth: panel.width,
       panelBottom: panel.bottom,
       decisionTop: decisionRect.top,
@@ -727,7 +756,10 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   });
 
   expect(desktopLayout.decisionTop).toBeCloseTo(decisionTop, 0);
-  expect(desktopLayout.panelWidth).toBeCloseTo(desktopLayout.shellWidth, 0);
+  expect(desktopLayout.panelWidth).toBeCloseTo(
+    desktopLayout.shellContentWidth,
+    0,
+  );
   expect(desktopLayout.panelBottom).toBeGreaterThan(desktopLayout.decisionTop);
   expect(desktopLayout.panelRadius).toBe("25px");
 
@@ -896,14 +928,7 @@ test("定位被拒絕時顯示清楚 fallback 並可用鍵盤恢復", async ({
 
   await expect(page.locator(".location-name")).toHaveText("灣仔");
   await expect(page.locator(".location-detail")).toContainText("已選擇地區");
-  await expect(page.locator("#result-title")).toBeFocused();
-  await expect
-    .poll(() =>
-      page.locator("#result-title").evaluate((element) =>
-        getComputedStyle(element).outlineStyle,
-      ),
-    )
-    .toBe("solid");
+  await expect(page.locator(".location-pill")).toBeFocused();
 });
 
 test("生效警告才顯示雙格區，未能確認時改顯示審慎提示", async ({ page }) => {

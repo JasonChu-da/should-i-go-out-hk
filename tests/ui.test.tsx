@@ -89,6 +89,10 @@ describe("mobile UI semantics", () => {
     expect(html).toContain('data-phase="open"');
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('aria-controls="quick-controls"');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('aria-labelledby="location-dialog-title"');
+    expect(html).toContain("地區及活動選擇");
     expect(html).toContain('id="quick-controls"');
     expect(html).toContain("選擇界面");
     expect(html).toContain("香港整體");

@@ -69,10 +69,19 @@ export function LocationControls({
     <section
       ref={panelRef}
       className="location-panel"
-      aria-labelledby="location-heading"
+      role={pickerMounted ? "dialog" : undefined}
+      aria-modal={pickerMounted ? true : undefined}
+      aria-labelledby={
+        pickerMounted ? "location-dialog-title" : "location-heading"
+      }
       data-open={pickerMounted}
       data-phase={pickerPhase}
     >
+      {pickerMounted ? (
+        <h2 className="sr-only" id="location-dialog-title">
+          地區及活動選擇
+        </h2>
+      ) : null}
       <button
         ref={triggerRef}
         className="location-pill"

@@ -356,3 +356,9 @@
 - [x] 修正警告顯示、離線請求競態、錯誤分類、受限儲存下的動態控制及 44px 觸控目標
 - [x] 加入最小回歸測試；通過 lint、typecheck、400 項 Vitest、production build、25 項一般 E2E 及 10 項 PWA E2E
 - [x] 完成 diff review，記錄未修的中低優先級限制及部署環境診斷
+
+## 2026-08-04：降雨 ZIP 完整性驗證
+
+- [x] 以 central directory 為準，驗證 EOCD、單一 entry、local header 一致性、大小及 CRC-32
+- [x] 保留 512 KiB／5 MiB／100,000 行、timeout、cache 及正常 CSV 解析行為
+- [x] 補齊 malformed ZIP 回歸測試，通過 lint、typecheck、414 項 Vitest、build、audit 及 HKO live smoke test

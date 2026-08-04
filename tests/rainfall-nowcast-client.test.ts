@@ -25,6 +25,130 @@ const ZIP_FIXTURE = Uint8Array.from(
     "base64",
   ),
 );
+const ZIP_ENTRY_NAME = "gridded_rainfall_nowcast.csv";
+const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+
+function zipOffsets(zip: Uint8Array) {
+  const view = new DataView(
+    zip.buffer,
+    zip.byteOffset,
+    zip.byteLength,
+  );
+  let eocdOffset = zip.byteLength - 22;
+  while (
+    eocdOffset >= 0 &&
+    view.getUint32(eocdOffset, true) !==
+      ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE
+  ) {
+    eocdOffset -= 1;
+  }
+  if (eocdOffset < 0) throw new Error("測試 ZIP 缺少 EOCD");
+
+  const centralOffset = view.getUint32(eocdOffset + 16, true);
+  if (
+    view.getUint32(centralOffset, true) !== ZIP_CENTRAL_FILE_SIGNATURE
+  ) {
+    throw new Error("測試 ZIP 缺少 central file header");
+  }
+  return { centralOffset, eocdOffset };
+}
+
+function rewriteEntryName(name: string): Uint8Array {
+  const { centralOffset, eocdOffset } = zipOffsets(ZIP_FIXTURE);
+  const source = Buffer.from(ZIP_FIXTURE);
+  const view = new DataView(
+    ZIP_FIXTURE.buffer,
+    ZIP_FIXTURE.byteOffset,
+    ZIP_FIXTURE.byteLength,
+  );
+  const localNameLength = view.getUint16(26, true);
+  const localExtraLength = view.getUint16(28, true);
+  const centralNameLength = view.getUint16(centralOffset + 28, true);
+  const centralExtraLength = view.getUint16(centralOffset + 30, true);
+  const centralCommentLength = view.getUint16(centralOffset + 32, true);
+  const nameBytes = Buffer.from(name, "utf8");
+
+  const localHeader = Buffer.from(source.subarray(0, 30));
+  localHeader.writeUInt16LE(nameBytes.byteLength, 26);
+  const localExtra = source.subarray(
+    30 + localNameLength,
+    30 + localNameLength + localExtraLength,
+  );
+  const compressedData = source.subarray(
+    30 + localNameLength + localExtraLength,
+    centralOffset,
+  );
+
+  const centralHeader = Buffer.from(
+    source.subarray(centralOffset, centralOffset + 46),
+  );
+  centralHeader.writeUInt16LE(nameBytes.byteLength, 28);
+  const centralTail = source.subarray(
+    centralOffset + 46 + centralNameLength,
+    centralOffset +
+      46 +
+      centralNameLength +
+      centralExtraLength +
+      centralCommentLength,
+  );
+  const newCentralOffset =
+    localHeader.byteLength +
+    nameBytes.byteLength +
+    localExtra.byteLength +
+    compressedData.byteLength;
+  const newCentralSize =
+    centralHeader.byteLength + nameBytes.byteLength + centralTail.byteLength;
+  const eocd = Buffer.from(source.subarray(eocdOffset));
+  eocd.writeUInt32LE(newCentralSize, 12);
+  eocd.writeUInt32LE(newCentralOffset, 16);
+
+  return Uint8Array.from(
+    Buffer.concat([
+      localHeader,
+      nameBytes,
+      localExtra,
+      compressedData,
+      centralHeader,
+      nameBytes,
+      centralTail,
+      eocd,
+    ]),
+  );
+}
+
+function duplicateCentralEntry(): Uint8Array {
+  const { centralOffset, eocdOffset } = zipOffsets(ZIP_FIXTURE);
+  const source = Buffer.from(ZIP_FIXTURE);
+  const centralEntry = source.subarray(centralOffset, eocdOffset);
+  const eocd = Buffer.from(source.subarray(eocdOffset));
+  eocd.writeUInt16LE(2, 8);
+  eocd.writeUInt16LE(2, 10);
+  eocd.writeUInt32LE(centralEntry.byteLength * 2, 12);
+  return Uint8Array.from(
+    Buffer.concat([
+      source.subarray(0, centralOffset),
+      centralEntry,
+      centralEntry,
+      eocd,
+    ]),
+  );
+}
+
+function expectInvalidZip(zip: Uint8Array) {
+  return expect(
+    fetchRainfallNowcast({
+      fetchImpl: async () => zipResponse(Uint8Array.from(zip)),
+      ttlMs: 0,
+    }),
+  ).resolves.toEqual({
+    ok: false,
+    error: {
+      type: "invalid-data",
+      message: RAINFALL_NOWCAST_ERROR_MESSAGES["invalid-data"],
+    },
+  });
+}
 
 function zipResponse(
   body: BodyInit | null = ZIP_FIXTURE,
@@ -129,7 +253,6 @@ describe("fetchRainfallNowcast", () => {
   });
 
   it("refresh 逾時時只沿用仍未過 24 分鐘的 cache", async () => {
-    vi.useFakeTimers();
     let currentTime = TEST_NOW;
     const fetchImpl: FetchImplementation = vi
       .fn()
@@ -144,6 +267,7 @@ describe("fetchRainfallNowcast", () => {
     };
 
     const first = await fetchRainfallNowcast(options);
+    vi.useFakeTimers();
     currentTime += 101;
     const refresh = fetchRainfallNowcast(options);
     await vi.advanceTimersByTimeAsync(100);
@@ -302,8 +426,11 @@ describe("fetchRainfallNowcast", () => {
 
   it("拒絕宣告解壓後超過 5 MiB 的 ZIP", async () => {
     const oversizedZip = ZIP_FIXTURE.slice();
-    new DataView(oversizedZip.buffer).setUint32(
-      22,
+    const { centralOffset } = zipOffsets(oversizedZip);
+    const view = new DataView(oversizedZip.buffer);
+    view.setUint32(22, MAX_RESPONSE_BYTES + 1, true);
+    view.setUint32(
+      centralOffset + 24,
       MAX_RESPONSE_BYTES + 1,
       true,
     );
@@ -347,5 +474,89 @@ describe("fetchRainfallNowcast", () => {
     });
     expect(second.ok).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("解壓後驗證 central directory 的 CRC-32", async () => {
+    const invalidZip = ZIP_FIXTURE.slice();
+    const { centralOffset } = zipOffsets(invalidZip);
+    const view = new DataView(invalidZip.buffer);
+    const invalidCrc = (view.getUint32(14, true) + 1) >>> 0;
+    view.setUint32(14, invalidCrc, true);
+    view.setUint32(centralOffset + 16, invalidCrc, true);
+
+    await expectInvalidZip(invalidZip);
+  });
+
+  it.each([
+    ["central directory signature 損壞", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      zip[centralOffset] ^= 0xff;
+      return zip;
+    }],
+    ["central directory 越界", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { eocdOffset } = zipOffsets(zip);
+      new DataView(zip.buffer).setUint32(eocdOffset + 16, 0xffffffff, true);
+      return zip;
+    }],
+    ["包含多個 entry", duplicateCentralEntry],
+    ["包含 directory entry", () =>
+      rewriteEntryName(`${ZIP_ENTRY_NAME.slice(0, -1)}/`)],
+    ["包含 path traversal 名稱", () =>
+      rewriteEntryName(`../${"a".repeat(ZIP_ENTRY_NAME.length - 3)}`)],
+    ["檔案名稱為空", () => rewriteEntryName("")],
+    ["entry 已加密", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      const view = new DataView(zip.buffer);
+      view.setUint16(6, 1, true);
+      view.setUint16(centralOffset + 8, 1, true);
+      return zip;
+    }],
+    ["compression method 不支援", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      const view = new DataView(zip.buffer);
+      view.setUint16(8, 99, true);
+      view.setUint16(centralOffset + 10, 99, true);
+      return zip;
+    }],
+    ["local header 越界", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      new DataView(zip.buffer).setUint32(
+        centralOffset + 42,
+        0xffffffff,
+        true,
+      );
+      return zip;
+    }],
+    ["central/local 重要欄位不一致", () => {
+      const zip = ZIP_FIXTURE.slice();
+      new DataView(zip.buffer).setUint32(14, 0, true);
+      return zip;
+    }],
+    ["compressed size 與實際內容不一致", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      const view = new DataView(zip.buffer);
+      const size = view.getUint32(18, true) + 1;
+      view.setUint32(18, size, true);
+      view.setUint32(centralOffset + 20, size, true);
+      return zip;
+    }],
+    ["uncompressed size 與實際內容不一致", () => {
+      const zip = ZIP_FIXTURE.slice();
+      const { centralOffset } = zipOffsets(zip);
+      const view = new DataView(zip.buffer);
+      const size = view.getUint32(22, true) + 1;
+      view.setUint32(22, size, true);
+      view.setUint32(centralOffset + 24, size, true);
+      return zip;
+    }],
+    ["ZIP 被截斷", () => ZIP_FIXTURE.slice(0, -1)],
+  ])("拒絕 %s", async (_name, createZip) => {
+    await expectInvalidZip(createZip());
   });
 });

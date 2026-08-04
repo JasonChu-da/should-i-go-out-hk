@@ -1,4 +1,6 @@
-import { inflateRawSync } from "node:zlib";
+import * as zlib from "node:zlib";
+
+import { fromBufferPromise, type Entry } from "yauzl";
 
 import type { FetchImplementation } from "@/lib/api/client";
 import {
@@ -24,7 +26,9 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/zip",
   "application/octet-stream",
 ]);
-const ZIP_LOCAL_FILE_SIGNATURE = 0x04034b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIZE = 22;
+const ZIP_MAX_COMMENT_SIZE = 0xffff;
 const ZIP_DEFLATE_METHOD = 8;
 const ZIP_ENTRY_NAME = "gridded_rainfall_nowcast.csv";
 
@@ -137,68 +141,165 @@ function isAbortError(error: unknown): boolean {
 class InvalidRainfallNowcastDataError extends Error {}
 class RainfallNowcastTooLargeError extends Error {}
 
-function extractCsvFromZip(zipBytes: Uint8Array): Uint8Array {
-  if (zipBytes.byteLength < 30) {
-    throw new InvalidRainfallNowcastDataError();
-  }
-
+function readCentralDirectoryBounds(zipBytes: Uint8Array): {
+  offset: number;
+  size: number;
+} {
   const view = new DataView(
     zipBytes.buffer,
     zipBytes.byteOffset,
     zipBytes.byteLength,
   );
-  if (view.getUint32(0, true) !== ZIP_LOCAL_FILE_SIGNATURE) {
-    throw new InvalidRainfallNowcastDataError();
-  }
+  const firstPossibleOffset = Math.max(
+    0,
+    zipBytes.byteLength -
+      ZIP_END_OF_CENTRAL_DIRECTORY_SIZE -
+      ZIP_MAX_COMMENT_SIZE,
+  );
 
-  const flags = view.getUint16(6, true);
-  const method = view.getUint16(8, true);
-  const compressedSize = view.getUint32(18, true);
-  const uncompressedSize = view.getUint32(22, true);
-  const fileNameLength = view.getUint16(26, true);
-  const extraLength = view.getUint16(28, true);
-  const dataStart = 30 + fileNameLength + extraLength;
-  const dataEnd = dataStart + compressedSize;
-
-  if (compressedSize > MAX_COMPRESSED_RESPONSE_BYTES) {
-    throw new RainfallNowcastTooLargeError();
-  }
-  if (
-    flags !== 0 ||
-    method !== ZIP_DEFLATE_METHOD ||
-    dataStart > zipBytes.byteLength ||
-    dataEnd > zipBytes.byteLength
+  for (
+    let offset =
+      zipBytes.byteLength - ZIP_END_OF_CENTRAL_DIRECTORY_SIZE;
+    offset >= firstPossibleOffset;
+    offset -= 1
   ) {
-    throw new InvalidRainfallNowcastDataError();
-  }
-  if (uncompressedSize > MAX_RESPONSE_BYTES) {
-    throw new RainfallNowcastTooLargeError();
+    if (
+      view.getUint32(offset, true) !==
+      ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE
+    ) {
+      continue;
+    }
+    const commentLength = view.getUint16(offset + 20, true);
+    if (
+      offset + ZIP_END_OF_CENTRAL_DIRECTORY_SIZE + commentLength !==
+      zipBytes.byteLength
+    ) {
+      continue;
+    }
+
+    const entryCount = view.getUint16(offset + 10, true);
+    const centralDirectorySize = view.getUint32(offset + 12, true);
+    const centralDirectoryOffset = view.getUint32(offset + 16, true);
+    if (
+      view.getUint16(offset + 4, true) !== 0 ||
+      view.getUint16(offset + 6, true) !== 0 ||
+      view.getUint16(offset + 8, true) !== entryCount ||
+      entryCount !== 1 ||
+      centralDirectoryOffset + centralDirectorySize !== offset
+    ) {
+      throw new InvalidRainfallNowcastDataError();
+    }
+    return { offset: centralDirectoryOffset, size: centralDirectorySize };
   }
 
-  let fileName: string;
-  try {
-    fileName = new TextDecoder("utf-8", { fatal: true }).decode(
-      zipBytes.subarray(30, 30 + fileNameLength),
-    );
-  } catch {
-    throw new InvalidRainfallNowcastDataError();
-  }
-  if (fileName !== ZIP_ENTRY_NAME) {
-    throw new InvalidRainfallNowcastDataError();
-  }
+  throw new InvalidRainfallNowcastDataError();
+}
 
-  let csvBytes: Uint8Array;
+function crc32(bytes: Uint8Array): number {
+  const nativeCrc32 = (
+    zlib as typeof zlib & {
+      crc32?: (data: Uint8Array) => number;
+    }
+  ).crc32;
+  if (nativeCrc32) return nativeCrc32(bytes);
+
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function isExpectedEntry(entry: Entry): boolean {
+  return (
+    entry.fileName === ZIP_ENTRY_NAME &&
+    entry.fileName.length > 0 &&
+    !entry.fileName.endsWith("/") &&
+    !entry.isEncrypted() &&
+    entry.generalPurposeBitFlag === 0 &&
+    entry.compressionMethod === ZIP_DEFLATE_METHOD
+  );
+}
+
+async function extractCsvFromZip(
+  zipBytes: Uint8Array,
+): Promise<Uint8Array> {
+  const centralDirectory = readCentralDirectoryBounds(zipBytes);
+  let zipFile: Awaited<ReturnType<typeof fromBufferPromise>> | undefined;
+
   try {
-    csvBytes = inflateRawSync(zipBytes.subarray(dataStart, dataEnd), {
-      maxOutputLength: MAX_RESPONSE_BYTES,
+    zipFile = await fromBufferPromise(Buffer.from(zipBytes), {
+      strictFileNames: true,
+      validateEntrySizes: true,
     });
-  } catch {
+    const entries = zipFile.eachEntry();
+    const firstEntry = await entries.next();
+    await entries.return?.();
+    const entry = firstEntry.value;
+    if (
+      !entry ||
+      !isExpectedEntry(entry) ||
+      46 +
+        entry.fileNameLength +
+        entry.extraFieldLength +
+        entry.fileCommentLength !==
+        centralDirectory.size
+    ) {
+      throw new InvalidRainfallNowcastDataError();
+    }
+    if (entry.compressedSize > MAX_COMPRESSED_RESPONSE_BYTES) {
+      throw new RainfallNowcastTooLargeError();
+    }
+    if (entry.uncompressedSize > MAX_RESPONSE_BYTES) {
+      throw new RainfallNowcastTooLargeError();
+    }
+
+    const local = await zipFile.readLocalFileHeaderPromise(entry);
+    if (
+      local.versionNeededToExtract !== entry.versionNeededToExtract ||
+      local.generalPurposeBitFlag !== entry.generalPurposeBitFlag ||
+      local.compressionMethod !== entry.compressionMethod ||
+      local.lastModFileTime !== entry.lastModFileTime ||
+      local.lastModFileDate !== entry.lastModFileDate ||
+      local.crc32 !== entry.crc32 ||
+      local.compressedSize !== entry.compressedSize ||
+      local.uncompressedSize !== entry.uncompressedSize ||
+      !local.fileName.equals(entry.fileNameRaw) ||
+      local.fileDataStart + entry.compressedSize !==
+        centralDirectory.offset
+    ) {
+      throw new InvalidRainfallNowcastDataError();
+    }
+
+    const chunks: Buffer[] = [];
+    let bytesRead = 0;
+    const stream = await zipFile.openReadStreamPromise(entry);
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytesRead += bytes.byteLength;
+      if (bytesRead > MAX_RESPONSE_BYTES) {
+        stream.destroy();
+        throw new RainfallNowcastTooLargeError();
+      }
+      chunks.push(bytes);
+    }
+    const csvBytes = Buffer.concat(chunks, bytesRead);
+    if (
+      csvBytes.byteLength !== entry.uncompressedSize ||
+      crc32(csvBytes) !== entry.crc32
+    ) {
+      throw new InvalidRainfallNowcastDataError();
+    }
+    return csvBytes;
+  } catch (error) {
+    if (error instanceof RainfallNowcastTooLargeError) throw error;
     throw new InvalidRainfallNowcastDataError();
+  } finally {
+    zipFile?.close();
   }
-  if (csvBytes.byteLength !== uncompressedSize) {
-    throw new InvalidRainfallNowcastDataError();
-  }
-  return csvBytes;
 }
 
 async function requestRainfallNowcast(
@@ -282,7 +383,10 @@ async function requestRainfallNowcast(
 
     let csvBytes: Uint8Array;
     try {
-      csvBytes = extractCsvFromZip(zipBytes);
+      csvBytes = await Promise.race([
+        extractCsvFromZip(zipBytes),
+        timeoutPromise,
+      ]);
     } catch (error) {
       if (error instanceof RainfallNowcastTooLargeError) {
         return failure("too-large");

@@ -230,7 +230,9 @@ Transport 固定限制：
 
 
 
-Timeout 覆蓋 headers、完整 body download、ZIP 解壓及 CSV 解析。只接受
+Timeout 可中止等待 headers 的 fetch 及尚未完成的 body reader；ZIP extraction
+只與 deadline 競速，底層解壓不接收 `AbortSignal`。UTF-8 decode、切行、CSV
+解析及 snapshot 建構屬同步 CPU 工作，不能被 timeout 中途停止。只接受
 
 `application/zip`、`application/octet-stream`；Content-Type
 
@@ -275,4 +277,3 @@ Timeout 覆蓋 headers、完整 body download、ZIP 解壓及 CSV 解析。只�
 \- Automated tests must use local fixtures, not live API calls.
 
 \- Record the retrieval time separately from the source publication time.
-

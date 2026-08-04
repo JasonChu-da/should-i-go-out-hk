@@ -375,3 +375,11 @@
 - [x] 加入 dialog 語義、初始焦點、焦點圈限、Escape 關閉、焦點恢復及背景 inert
 - [x] 讓主內容左右間距納入 safe-area inset，同時保留一般裝置既有視覺比例
 - [x] 補充 UI／E2E 回歸測試；通過 lint、typecheck、425 項 Vitest、build、25 項一般 E2E、10 項 PWA E2E 及 diff check
+
+## 2026-08-04：React coverage、accessibility、WebKit 與 timeout 文件
+
+- [x] 把具條件分支的主要 React components 納入 Vitest coverage，補有行為價值的分支測試並保留可維護的既有門檻
+- [x] 以 axe 掃描首頁正常、離線、資料不可用及地區浮層，記錄自動掃描限制
+- [x] 一般 Playwright E2E 加入 WebKit，CI 安裝所需 browser；PWA 測試按實際 API 支援維持 Chromium
+- [x] 修正 README 對 AbortSignal、同步解壓／CSV parsing 及成本上限的描述
+- [x] 分批提交並通過 lint、typecheck、430 項 unit／coverage、build、52 項一般 E2E、10 項 PWA E2E、audit 及 diff check

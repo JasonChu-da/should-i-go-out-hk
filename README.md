@@ -171,9 +171,9 @@ npm run build
 
 - `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
 - PWA service worker 對所有 `/api/` 採 network-only，前端 fetch 亦保持 `cache: "no-store"`；PWA 靜態 cache 不改變 server-side freshness 或 API failure semantics。
-- 五個政府來源並行請求，每個來源有獨立 8 秒 timeout；單一來源失敗不會阻塞其他成功來源。降雨 ZIP 的 timeout 覆蓋 response headers、完整 body download、解壓及 CSV 解析。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
+- 五個政府來源並行請求，每個來源有獨立 8 秒 deadline；單一來源失敗不會阻塞其他成功來源。降雨請求逾時時，`AbortController` 可中止仍在等待 response headers 的 fetch，並取消尚未完成的 response body reader；ZIP extraction 會與 deadline 競速，但底層解壓不接收 `AbortSignal`。UTF-8 decode、切分文字、CSV parsing 及 snapshot 建構是同步 CPU 工作，不能被 timeout 中途停止；因此 8 秒不是這些步驟的可搶佔執行上限。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
 - 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 ZIP 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存原始檔案。
-- 降雨 transport 使用官方約 16 KB ZIP，壓縮後上限為 512 KiB、解壓後上限為 5 MiB，另限制 100,000 筆資料列；超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
+- 降雨 transport 使用官方約 16 KB ZIP，壓縮資料最多讀取 512 KiB，ZIP 宣告及實際解壓輸出均不得超過 5 MiB，CSV 最多處理 100,000 筆資料列；這些上限限制即使 timeout 無法搶佔同步 CPU 工作時的最壞輸入及處理成本。下載期間超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
 - HTTP、網絡、timeout、Content-Type 或 JSON 解碼失敗不會寫入快取。若上游回傳可解碼但 schema malformed 的 JSON，該原始回應可能保留至短期 TTL 屆滿；runtime validation 仍會把相關來源標為不可用，絕不把 malformed 值納入計分。
 - 記憶體 cache 不會跨 cold start、重新部署或不同 Function instance 共享，因此只能減少部分重複請求，不能視作可靠的持久 cache。這符合 MVP「無資料庫」限制。
 - 新 Vercel 專案預設啟用 Fluid compute；Hobby 的預設 Function duration 足以涵蓋應用本身的 8 秒上游 timeout，毋須額外提高 duration 或購買付費方案。最新上限仍應以 [Vercel Function duration](https://vercel.com/docs/functions/configuring-functions/duration) 為準。

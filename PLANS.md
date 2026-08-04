@@ -347,3 +347,12 @@
 - [x] semantic neutral 維持中性 DOM、severity、動畫及安全 fallback，圖片映射至同時段 clear mobile／desktop 資產
 - [x] 補充 null／無效時間單元測試、neutral clear asset E2E、失敗圖片 fallback 及 viewport 請求驗收
 - [x] 通過 lint、typecheck、400 項 Vitest、25 項一般 Playwright E2E、8 項 PWA E2E 及 production build；首頁列為 dynamic route
+
+## 2026-08-04：Production-readiness audit 與高優先級修復
+
+- [x] 閱讀產品、API、驗收及既有計劃文件，盤點 production 程式碼、測試、資產與依賴
+- [x] 執行修正前 lint、typecheck、unit、coverage、build、一般 E2E、PWA E2E、dependency audit 及真實官方 API 冒煙測試
+- [x] 按嚴重程度列出功能、型別、API、錯誤處理、效能、安全、無障礙、響應式、測試、重複／死碼、依賴及 README 問題
+- [x] 修正警告顯示、離線請求競態、錯誤分類、受限儲存下的動態控制及 44px 觸控目標
+- [x] 加入最小回歸測試；通過 lint、typecheck、400 項 Vitest、production build、25 項一般 E2E 及 10 項 PWA E2E
+- [x] 完成 diff review，記錄未修的中低優先級限制及部署環境診斷

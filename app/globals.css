@@ -1799,7 +1799,7 @@ html[data-weather-motion="off"] .loading-timeout-hint {
 }
 
 .partial-banner .text-button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0.35rem 0.55rem;
   font-size: 0.66rem;
 }

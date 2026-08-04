@@ -171,7 +171,7 @@ describe("mobile UI semantics", () => {
     expect(html).toContain("13:55");
   });
 
-  it("only renders warning tiles from a confirmed current snapshot", () => {
+  it("shows confirmed warning items even when another item is malformed", () => {
     const clear = buildOutlookFixture();
     const active = buildOutlookFixture();
     active.warnings.items = [
@@ -189,11 +189,20 @@ describe("mobile UI semantics", () => {
     const unavailable = buildOutlookFixture();
     unavailable.warnings.source.status = "unavailable";
     unavailable.warnings.items = active.warnings.items;
+    const incomplete = buildOutlookFixture();
+    incomplete.warnings.isSnapshotComplete = false;
+    incomplete.warnings.items = active.warnings.items;
 
     expect(renderToStaticMarkup(<ActiveWarnings warnings={clear.warnings} />)).toBe("");
     expect(
       renderToStaticMarkup(<ActiveWarnings warnings={active.warnings} />),
     ).toContain("雷暴警告");
+    const incompleteHtml = renderToStaticMarkup(
+      <ActiveWarnings warnings={incomplete.warnings} />,
+    );
+    expect(incompleteHtml).toContain("部分警告項目格式異常");
+    expect(incompleteHtml).toContain("warning-tile");
+    expect(incompleteHtml).toContain("雷暴警告");
     const unavailableHtml = renderToStaticMarkup(
       <ActiveWarnings warnings={unavailable.warnings} />,
     );

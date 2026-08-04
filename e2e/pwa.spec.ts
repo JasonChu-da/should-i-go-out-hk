@@ -359,6 +359,31 @@ test("加入主畫面提示只會在未安裝的 iPhone Safari 顯示一次", as
   await expect(hint).toHaveCount(0);
 });
 
+test("localStorage 被封鎖時仍可在本頁關閉動態背景", async ({ page }) => {
+  await page.addInitScript(() => {
+    Storage.prototype.getItem = () => {
+      throw new DOMException("blocked", "SecurityError");
+    };
+    Storage.prototype.setItem = () => {
+      throw new DOMException("blocked", "SecurityError");
+    };
+  });
+
+  await openReadyHomepage(page);
+  const toggle = page.getByRole("button", { name: /動態背景/ });
+  await toggle.click();
+
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-weather-motion",
+    "off",
+  );
+  await expect(page.locator(".weather-scene")).toHaveAttribute(
+    "data-motion",
+    "off",
+  );
+});
+
 test("service worker headers、控制狀態及 Cache Storage allowlist 正確", async ({
   page,
   request,
@@ -537,13 +562,73 @@ test("已載入頁面區分離線與服務不可用，並只在真實成功後�
 
   apiMode = { type: "network-error" };
   await page.getByRole("button", { name: /重新載入資料|重新嘗試/ }).click();
-  await expect(page.locator('main[data-outlook-state="offline"]')).toBeVisible();
+  await expect(
+    page.locator('main[data-outlook-state="unavailable"]'),
+  ).toBeVisible();
   await expectNoDerivedWeather(page);
 
   apiMode = { type: "payload" };
   await page.getByRole("button", { name: /重新載入資料|重新嘗試/ }).click();
   await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(1);
+});
+
+test("離線事件會失效化未完成請求，延遲回應不能恢復舊畫面", async ({
+  page,
+}) => {
+  await openReadyHomepage(page);
+  await page.evaluate(() => {
+    const target = window as typeof window & {
+      __delayedApiStarted?: boolean;
+      __delayedApiSettled?: boolean;
+      __releaseDelayedApi?: () => void;
+    };
+    const nativeFetch = window.fetch;
+    window.fetch = (input, init) => {
+      if (!String(input).includes("/api/outlook")) {
+        return nativeFetch(input, init);
+      }
+      target.__delayedApiStarted = true;
+      return new Promise<Response>((resolve, reject) => {
+        target.__releaseDelayedApi = () => {
+          void nativeFetch(input, { ...init, signal: undefined }).then(
+            (response) => {
+              target.__delayedApiSettled = true;
+              resolve(response);
+            },
+            reject,
+          );
+        };
+      });
+    };
+  });
+
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect
+    .poll(() => page.evaluate(() => Boolean(
+      (window as typeof window & { __delayedApiStarted?: boolean })
+        .__delayedApiStarted,
+    )))
+    .toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.locator('main[data-outlook-state="offline"]')).toBeVisible();
+
+  await page.evaluate(() => {
+    const target = window as typeof window & {
+      __releaseDelayedApi?: () => void;
+    };
+    target.__releaseDelayedApi?.();
+  });
+  await expect
+    .poll(() => page.evaluate(() => Boolean(
+      (window as typeof window & { __delayedApiSettled?: boolean })
+        .__delayedApiSettled,
+    )))
+    .toBe(true);
+  await page.waitForTimeout(100);
+
+  await expect(page.locator('main[data-outlook-state="offline"]')).toBeVisible();
+  await expectNoDerivedWeather(page);
 });
 
 test("較舊的延遲請求不會覆蓋較新的地區結果", async ({

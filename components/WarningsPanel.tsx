@@ -16,6 +16,8 @@ interface ActiveWarningsProps {
 export function ActiveWarnings({ warnings }: ActiveWarningsProps) {
   const unavailable =
     warnings.source.status !== "ok" || !warnings.isSnapshotComplete;
+  const hasConfirmedWarnings =
+    warnings.source.status === "ok" && warnings.items.length > 0;
 
   if (!unavailable && warnings.items.length === 0) return null;
 
@@ -44,7 +46,7 @@ export function ActiveWarnings({ warnings }: ActiveWarningsProps) {
         </div>
       ) : null}
 
-      {!unavailable && warnings.items.length > 0 ? (
+      {hasConfirmedWarnings ? (
         <ul className="warning-grid" aria-label="生效中的天氣警告">
           {warnings.items.map((warning) => (
             <li className="warning-tile" key={`${warning.family}-${warning.code}`}>

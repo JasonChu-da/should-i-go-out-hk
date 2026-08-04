@@ -5,13 +5,18 @@ import { AppIcon } from "@/components/AppIcon";
 
 const MOTION_STORAGE_KEY = "weather-scene-motion:v1";
 const MOTION_CHANGE_EVENT = "weather-scene-motion-change";
+let volatileMotionPreference = true;
 
 function getMotionSnapshot(): boolean {
   try {
-    return window.localStorage.getItem(MOTION_STORAGE_KEY) !== "off";
+    const stored = window.localStorage.getItem(MOTION_STORAGE_KEY);
+    if (stored !== null) {
+      volatileMotionPreference = stored !== "off";
+    }
   } catch {
-    return true;
+    // Keep the current-page preference when storage is unavailable.
   }
+  return volatileMotionPreference;
 }
 
 function getMotionServerSnapshot(): boolean {
@@ -21,8 +26,10 @@ function getMotionServerSnapshot(): boolean {
 function subscribeToMotionPreference(onStoreChange: () => void): () => void {
   const handleStorage = (event: StorageEvent) => {
     if (event.key === MOTION_STORAGE_KEY) {
-      document.documentElement.dataset.weatherMotion =
-        event.newValue === "off" ? "off" : "on";
+      volatileMotionPreference = event.newValue !== "off";
+      document.documentElement.dataset.weatherMotion = volatileMotionPreference
+        ? "on"
+        : "off";
       onStoreChange();
     }
   };
@@ -55,11 +62,12 @@ export function useMotionPreference(): readonly [boolean, (next: boolean) => voi
     getMotionServerSnapshot,
   );
   const setEnabled = useCallback((next: boolean) => {
+    volatileMotionPreference = next;
     document.documentElement.dataset.weatherMotion = next ? "on" : "off";
     try {
       window.localStorage.setItem(MOTION_STORAGE_KEY, next ? "on" : "off");
     } catch {
-      // The control remains useful for this render even when storage is blocked.
+      // The module fallback keeps the control useful for this page.
     }
     window.dispatchEvent(new Event(MOTION_CHANGE_EVENT));
   }, []);

@@ -263,7 +263,9 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
         setRouteResponse({
           status:
             !response.ok && response.error.type === "network"
-              ? "offline"
+              ? navigator.onLine
+                ? "unavailable"
+                : "offline"
               : "unavailable",
           payload: null,
         });
@@ -301,6 +303,9 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
 
   useEffect(() => {
     const handleOffline = () => {
+      requestId.current += 1;
+      activeRequest.current?.abort();
+      activeRequest.current = null;
       setRouteResponse({ status: "offline", payload: null });
     };
     const handleOnline = () => {

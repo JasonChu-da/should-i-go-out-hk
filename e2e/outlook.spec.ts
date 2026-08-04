@@ -700,7 +700,13 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
 
   const picker = page.locator(".quick-controls");
   await trigger.evaluate((element: HTMLButtonElement) => element.click());
-  await page.waitForTimeout(80);
+  await expect
+    .poll(() =>
+      page
+        .locator(".location-panel")
+        .evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(collapsedWidth);
   const openingLayout = await page.evaluate(() => {
     const shell = document.querySelector(".app-shell")!.getBoundingClientRect();
     const panel = document.querySelector(".location-panel")!;

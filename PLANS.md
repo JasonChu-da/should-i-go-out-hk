@@ -362,3 +362,10 @@
 - [x] 以 central directory 為準，驗證 EOCD、單一 entry、local header 一致性、大小及 CRC-32
 - [x] 保留 512 KiB／5 MiB／100,000 行、timeout、cache 及正常 CSV 解析行為
 - [x] 補齊 malformed ZIP 回歸測試，通過 lint、typecheck、414 項 Vitest、build、audit 及 HKO live smoke test
+
+## 2026-08-04：氣象數值範圍及高溫缺濕度修正
+
+- [x] 盤點 outlook payload 的外部數值欄位並核對官方即時格式及本地極端紀錄
+- [x] 集中保守合理範圍；超界一般天氣欄位按 metric 降級，不 clamp 或拖垮其他觀測
+- [x] 一般模式高溫且濕度缺失／異常時，把濕度列入 ignored data，不改完整資料評分
+- [x] 補齊範圍、非有限數字、缺失值及高溫濕度回歸測試；lint、typecheck、425 項 Vitest、build、coverage 及 diff check 全部通過

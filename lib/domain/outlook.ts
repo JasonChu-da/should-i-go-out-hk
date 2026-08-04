@@ -30,6 +30,25 @@ export type SourceStatus = "ok" | "stale" | "unavailable";
 
 export const RAINFALL_NOWCAST_SIGNAL_MM = 0.5;
 
+/**
+ * Conservative trust-boundary limits for numeric weather data.
+ *
+ * These are plausibility guards, not scoring thresholds: Hong Kong records
+ * remain well inside them. The 500 mm hourly ceiling is over twice the HKO's
+ * published local one-hour extreme; the 250 mm half-hour ceiling preserves
+ * the same maximum rate. Temperature keeps wide margins around Hong Kong's
+ * observed climate, humidity follows its physical percentage bounds, UV 50
+ * covers reported terrestrial extremes, and AQHI 11 represents official 10+.
+ */
+export const OUTLOOK_NUMERIC_RANGES = Object.freeze({
+  rainfallMm: { min: 0, max: 500 },
+  rainfallNowcastMm: { min: 0, max: 250 },
+  temperatureC: { min: -10, max: 60 },
+  humidityPercent: { min: 0, max: 100 },
+  uvIndex: { min: 0, max: 50 },
+  aqhi: { min: 1, max: 11 },
+});
+
 export interface SourceMeta {
   id: SourceId;
   label: string;

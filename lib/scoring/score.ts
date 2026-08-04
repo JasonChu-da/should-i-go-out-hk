@@ -477,6 +477,15 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
   if (mode === "exercise" || mode === "laundry") applyHumidity();
 
   if (
+    mode === "general" &&
+    isFresh(input.temperatureC) &&
+    input.temperatureC.value >= 33 &&
+    !isFresh(input.humidityPercent)
+  ) {
+    addIgnored(ignoredFactors, "humidity", "濕度", input.humidityPercent);
+  }
+
+  if (
     mode !== "laundry" &&
     isFresh(input.temperatureC) &&
     isFresh(input.humidityPercent) &&

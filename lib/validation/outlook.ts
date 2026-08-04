@@ -6,6 +6,7 @@ import type {
   SourceMeta,
 } from "@/lib/domain/outlook";
 import { RAINFALL_NOWCAST_SIGNAL_MM } from "@/lib/domain/outlook";
+import { OUTLOOK_NUMERIC_RANGES } from "@/lib/domain/outlook";
 import { LOCATIONS } from "@/lib/location/districts";
 import { isRecord } from "@/lib/validation/common";
 
@@ -48,10 +49,14 @@ function isMetric<T>(
 ): value is NormalizedMetric<T> {
   if (!isRecord(value)) return false;
 
+  const hasValue = value.value !== null;
+  const statusHasValue = value.status === "fresh" || value.status === "stale";
+
   return (
     typeof value.status === "string" &&
     METRIC_STATUSES.has(value.status) &&
-    (value.value === null || isValue(value.value)) &&
+    hasValue === statusHasValue &&
+    (!hasValue || isValue(value.value)) &&
     typeof value.label === "string" &&
     isNullableString(value.place) &&
     isNullableString(value.publishedAt) &&
@@ -95,12 +100,19 @@ function isWarning(value: unknown): value is NormalizedWarning {
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+const isNumberInRange = (
+  value: unknown,
+  range: Readonly<{ min: number; max: number }>,
+): value is number =>
+  isFiniteNumber(value) && value >= range.min && value <= range.max;
+
 const isAqhiValue = (
   value: unknown,
 ): value is { value: number; display: string } =>
   isRecord(value) &&
-  isFiniteNumber(value.value) &&
-  typeof value.display === "string";
+  Number.isInteger(value.value) &&
+  isNumberInRange(value.value, OUTLOOK_NUMERIC_RANGES.aqhi) &&
+  value.display === (value.value === 11 ? "10+" : String(value.value));
 
 function isRainfallNowcastValue(
   value: unknown,
@@ -117,8 +129,10 @@ function isRainfallNowcastValue(
       !isRecord(period) ||
       !isIsoTimestamp(period.periodStartAt) ||
       !isIsoTimestamp(period.periodEndAt) ||
-      !isFiniteNumber(period.rainfallMm) ||
-      period.rainfallMm < 0 ||
+      !isNumberInRange(
+        period.rainfallMm,
+        OUTLOOK_NUMERIC_RANGES.rainfallNowcastMm,
+      ) ||
       typeof period.isPartiallyElapsed !== "boolean"
     ) {
       return false;
@@ -246,10 +260,18 @@ export function isOutlookPayload(value: unknown): value is OutlookPayload {
       (candidate): candidate is number[] =>
         Array.isArray(candidate) && candidate.every(isFiniteNumber),
     ) &&
-    isMetric(weather.rainfallMm, isFiniteNumber) &&
-    isMetric(weather.temperatureC, isFiniteNumber) &&
-    isMetric(weather.humidityPercent, isFiniteNumber) &&
-    isMetric(weather.uvIndex, isFiniteNumber) &&
+    isMetric(weather.rainfallMm, (candidate): candidate is number =>
+      isNumberInRange(candidate, OUTLOOK_NUMERIC_RANGES.rainfallMm),
+    ) &&
+    isMetric(weather.temperatureC, (candidate): candidate is number =>
+      isNumberInRange(candidate, OUTLOOK_NUMERIC_RANGES.temperatureC),
+    ) &&
+    isMetric(weather.humidityPercent, (candidate): candidate is number =>
+      isNumberInRange(candidate, OUTLOOK_NUMERIC_RANGES.humidityPercent),
+    ) &&
+    isMetric(weather.uvIndex, (candidate): candidate is number =>
+      isNumberInRange(candidate, OUTLOOK_NUMERIC_RANGES.uvIndex),
+    ) &&
     Array.isArray(weather.icons) &&
     weather.icons.every(isFiniteNumber) &&
     isStringArray(weather.warningMessages) &&

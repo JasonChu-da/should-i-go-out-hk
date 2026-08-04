@@ -311,3 +311,11 @@ WeatherScene 不再把天氣圖示、過去一小時雨量、warning snapshot �
 首頁由 dynamic SSR 以伺服器當刻時間及現有香港日照函式決定初始 `day`、`dusk` 或 `night` period，並把 period 傳入 client component，避免 hydration mismatch 及先下載錯誤時段圖片。所有 semantic `neutral` 場景仍保持 neutral data attribute、靜態動畫及安全回退語義，但圖片路徑改用同一時段的 `clear-mobile.webp`／`clear-desktop.webp`。這只改變照片，不把無資料狀態宣稱為晴天；不加入 client 時段計時器，頁面長時間開啟時不在日照邊界自動切圖。
 
 理由：使用者開站首屏需要符合香港當刻時段的海港視覺；沿用既有 clear 資產及 `picture` responsive 選圖即可完成，並以 dynamic SSR 保持首次 HTML 與 hydration 一致。接受首頁失去完全靜態輸出，換取準確的首次背景及避免 neutral 圖片重複下載。
+
+## D-042：氣象數值採保守合理範圍並按欄位降級
+
+`/api/outlook` 內會進入 UI 或評分的連續氣象數值採 inclusive 範圍：過去一小時雨量 0–500 mm、每段半小時 nowcast 雨量 0–250 mm、氣溫 -10–60°C、相對濕度 0–100%、UV 指數 0–50、內部 AQHI 1–11（11 只代表官方 `10+`）。香港天文台總部歷史氣溫約為 0.0–36.6°C，而區域站曾錄得 39.0°C；區域一小時雨量紀錄為 211.5 mm。因此氣溫及雨量界線保留明顯安全空間，不會排除可合理預見的本地極端天氣。濕度使用百分比物理界線；天文台把 UV 11 或以上均列為極高風險，50 是只排除明顯損壞資料的寬鬆上限；AQHI 官方格式只容許 1–10 及 `10+`。
+
+欄位缺失以既有 `missing` 表達；錯誤型別、NaN、Infinity 或繞過 server normalization 的超界非空值不符合 browser payload contract；有限但超界的官方一般天氣觀測由 normalization 轉成該欄位 `malformed`／`value: null`，不 clamp，其他同來源新鮮欄位仍保留。評分只忽略該欄位並沿用資料不完整上限。天氣圖示是官方類別代碼而非連續氣象量；未知代碼本來就不會選擇場景，因此不套用人造連續範圍。本港預報的氣溫及風力目前只存在於文字欄位，payload 沒有 forecast temperature、wind speed 或 gust 數值可驗證。
+
+理由：範圍應阻止損壞資料進入 UI／評分，但不應把真實極端天氣壓成邊界值，亦不應因一個可隔離的觀測欄位而丟棄整個天氣來源。

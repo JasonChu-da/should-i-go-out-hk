@@ -147,7 +147,43 @@ describe("scoreOutlook", () => {
     expect(scoreOutlook(input, "exercise").score).toBe(0);
 
     input.humidityPercent = stale();
-    expect(scoreOutlook(input, "general").score).toBe(7);
+    const staleHumidity = scoreOutlook(input, "general");
+    expect(staleHumidity.score).toBe(7);
+    expect(staleHumidity.ignoredFactors).toContainEqual(
+      expect.objectContaining({ id: "humidity", status: "stale" }),
+    );
+  });
+
+  it.each([
+    ["missing", missing<number>()],
+    ["invalid", { status: "malformed", reason: "濕度數值超出合理範圍。" }],
+  ] as const)(
+    "lists %s humidity as ignored for high heat in general mode",
+    (_case, humidityPercent) => {
+      const input = normalInput();
+      input.temperatureC = fresh(33);
+      input.humidityPercent = humidityPercent;
+
+      const result = scoreOutlook(input, "general");
+
+      expect(result.score).toBe(7);
+      expect(result.ignoredFactors).toContainEqual(
+        expect.objectContaining({ id: "humidity" }),
+      );
+    },
+  );
+
+  it("keeps normal high-temperature scoring unchanged with valid humidity", () => {
+    const input = normalInput();
+    input.temperatureC = fresh(33);
+    input.humidityPercent = fresh(60);
+
+    const result = scoreOutlook(input, "general");
+
+    expect(result.score).toBe(7);
+    expect(result.ignoredFactors).not.toContainEqual(
+      expect.objectContaining({ id: "humidity" }),
+    );
   });
 
   it("penalizes high UV more for exercise", () => {

@@ -5,7 +5,10 @@ import type {
   RainfallNowcastValue,
   SourceMeta,
 } from "@/lib/domain/outlook";
-import { RAINFALL_NOWCAST_SIGNAL_MM } from "@/lib/domain/outlook";
+import {
+  OUTLOOK_NUMERIC_RANGES,
+  RAINFALL_NOWCAST_SIGNAL_MM,
+} from "@/lib/domain/outlook";
 import { FRESHNESS_THRESHOLDS_MS } from "@/lib/freshness";
 import {
   DISTRICTS,
@@ -346,6 +349,20 @@ export function normalizeRainfallNowcast(
     return unavailableRainfallNowcast(
       retrievedAt,
       "找不到所選地區的降雨預報。",
+      "malformed",
+    );
+  }
+
+  if (
+    selected.periods.some(
+      ({ rainfallMm }) =>
+        rainfallMm < OUTLOOK_NUMERIC_RANGES.rainfallNowcastMm.min ||
+        rainfallMm > OUTLOOK_NUMERIC_RANGES.rainfallNowcastMm.max,
+    )
+  ) {
+    return unavailableRainfallNowcast(
+      retrievedAt,
+      "預測雨量數值超出合理範圍，不會用於計分。",
       "malformed",
     );
   }

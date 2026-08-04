@@ -340,4 +340,20 @@ describe("降雨臨近預報時間語義", () => {
     expect(expired.forecast.status).toBe("stale");
     expect(expired.source.status).toBe("stale");
   });
+
+  it("超界半小時雨量只令 nowcast 來源降級", () => {
+    const snapshot = expectSnapshot(csvForPoint([250.01, 0, 0, 0]));
+    const normalized = normalizeRainfallNowcast(
+      snapshot,
+      "wan-chai",
+      "2026-07-30T09:20:00.000Z",
+      new Date("2026-07-30T09:20:00.000Z"),
+    );
+
+    expect(normalized.forecast).toMatchObject({
+      status: "malformed",
+      value: null,
+    });
+    expect(normalized.source.status).toBe("unavailable");
+  });
 });

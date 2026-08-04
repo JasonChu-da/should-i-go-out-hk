@@ -357,4 +357,38 @@ describe("normalizeWeather", () => {
     expect(result.source.status).toBe("unavailable");
     expect(result.source.issues).toHaveLength(4);
   });
+
+  it("只降級超出範圍的單一欄位並保留同來源其他觀測", () => {
+    const time = "2026-07-14T20:00:00+08:00";
+    const result = normalizeWeather(
+      {
+        rainfall: {
+          data: [{ place: "中西區", max: 500.01 }],
+          endTime: time,
+        },
+        temperature: {
+          data: [{ place: "香港天文台", value: 30 }],
+          recordTime: time,
+        },
+        humidity: {
+          data: [{ place: "香港天文台", value: 80 }],
+          recordTime: time,
+        },
+      },
+      "central-and-western",
+      RETRIEVED_AT,
+      new Date(RETRIEVED_AT),
+    );
+
+    expect(result.rainfallMm).toMatchObject({
+      status: "malformed",
+      value: null,
+    });
+    expect(result.temperatureC.status).toBe("fresh");
+    expect(result.humidityPercent.status).toBe("fresh");
+    expect(result.source.status).toBe("ok");
+    expect(result.source.issues).toEqual([
+      "雨量：觀測數值超出合理範圍，不會用於計分。",
+    ]);
+  });
 });

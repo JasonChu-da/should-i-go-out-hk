@@ -3,6 +3,7 @@ import type {
   NormalizedMetric,
   NormalizedWeather,
 } from "@/lib/domain/outlook";
+import { OUTLOOK_NUMERIC_RANGES } from "@/lib/domain/outlook";
 import { FRESHNESS_THRESHOLDS_MS } from "@/lib/freshness";
 import {
   getDistrictById,
@@ -23,13 +24,6 @@ import type {
 
 const HONG_KONG_OBSERVATORY = "香港天文台";
 const HONG_KONG_HIGHEST_RAINFALL = "十八區最高";
-const WEATHER_VALUE_RANGES = Object.freeze({
-  rainfallMm: { min: 0 },
-  temperatureC: { min: -50, max: 60 },
-  humidityPercent: { min: 0, max: 100 },
-  uvIndex: { min: 0, max: 50 },
-});
-
 interface ValueRange {
   min?: number;
   max?: number;
@@ -169,7 +163,7 @@ function normalizeUv(value: HkoRhrread, now: Date): NormalizedMetric<number> {
     place: observation?.place ?? null,
     rawPublishedAt: value.uvindex.recordTime ?? value.updateTime,
     now,
-    range: WEATHER_VALUE_RANGES.uvIndex,
+    range: OUTLOOK_NUMERIC_RANGES.uvIndex,
   });
 }
 
@@ -210,7 +204,7 @@ export function normalizeWeather(
         : rainfallObservation?.place ?? null,
     rawPublishedAt: value.rainfall?.endTime,
     now,
-    range: WEATHER_VALUE_RANGES.rainfallMm,
+    range: OUTLOOK_NUMERIC_RANGES.rainfallMm,
   });
 
   const temperatureStations =
@@ -227,7 +221,7 @@ export function normalizeWeather(
     place: temperatureObservation?.place ?? null,
     rawPublishedAt: value.temperature?.recordTime,
     now,
-    range: WEATHER_VALUE_RANGES.temperatureC,
+    range: OUTLOOK_NUMERIC_RANGES.temperatureC,
   });
 
   const humidityObservation = findFirstAvailableStation(
@@ -240,7 +234,7 @@ export function normalizeWeather(
     place: humidityObservation?.place ?? null,
     rawPublishedAt: value.humidity?.recordTime,
     now,
-    range: WEATHER_VALUE_RANGES.humidityPercent,
+    range: OUTLOOK_NUMERIC_RANGES.humidityPercent,
   });
 
   const uvIndex = normalizeUv(value, now);

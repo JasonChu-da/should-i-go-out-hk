@@ -319,3 +319,11 @@ WeatherScene 不再把天氣圖示、過去一小時雨量、warning snapshot �
 欄位缺失以既有 `missing` 表達；錯誤型別、NaN、Infinity 或繞過 server normalization 的超界非空值不符合 browser payload contract；有限但超界的官方一般天氣觀測由 normalization 轉成該欄位 `malformed`／`value: null`，不 clamp，其他同來源新鮮欄位仍保留。評分只忽略該欄位並沿用資料不完整上限。天氣圖示是官方類別代碼而非連續氣象量；未知代碼本來就不會選擇場景，因此不套用人造連續範圍。本港預報的氣溫及風力目前只存在於文字欄位，payload 沒有 forecast temperature、wind speed 或 gust 數值可驗證。
 
 理由：範圍應阻止損壞資料進入 UI／評分，但不應把真實極端天氣壓成邊界值，亦不應因一個可隔離的觀測欄位而丟棄整個天氣來源。
+
+## D-043：先以同源 Report-Only CSP 量測，保留已證實的 inline 妥協
+
+全站先送出 `Content-Security-Policy-Report-Only`，不啟用強制 CSP。production 的 script、style、圖片、API、Service Worker、manifest 及 42 張背景只允許同源；沒有字型、frame、object、form 或 media 資源，因此對應 directive 設為 `'none'`。政府天氣及 AQHI endpoint 只由 server fetch，不加入瀏覽器 `connect-src`。
+
+目前 Next.js App Router 會在 production HTML 產生 inline hydration script，layout 與離線頁亦有必要 inline script，React 元件則使用 style attribute，因此 production 暫時只在 `script-src` 與 `style-src` 保留 `'unsafe-inline'`。`'unsafe-eval'` 及同源 `__nextjs_font` 只供 Next.js development 使用；production 明確排除 eval 並維持 `font-src 'none'`。沒有允許 `data:`、`blob:`、通配符或外部網域。本階段沒有 remote CSP report collector，Report-Only 違規只透過本機或自動瀏覽器測試的 console 觀察；只有在建立有界限、重視私隱且具實際監控用途的 collector 時才加入 `report-to` 或 `report-uri`，不保留只丟棄資料卻消耗 Function 請求的 endpoint。
+
+理由：nonce 架構會把目前的動態首頁全面改為逐請求渲染，超出本輪 Report-Only 量測範圍。先用可運作且可分類的最小政策取得 Chromium／WebKit 證據，再另行評估 nonce 或 hash，避免把開發工具、server-side 來源或不必要網域誤加入 production CSP。

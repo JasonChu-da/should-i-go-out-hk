@@ -403,6 +403,24 @@ test("service worker headers、控制狀態及 Cache Storage allowlist 正確", 
     };
   });
 
+  for (const path of [
+    "/",
+    "/manifest.webmanifest",
+    "/sw.js",
+    "/api/outlook?location=invalid",
+    "/weather/scenes/day/clear-mobile.webp",
+  ]) {
+    const response = await request.get(path);
+    expect(
+      response.headers()["content-security-policy-report-only"],
+    ).toBeTruthy();
+  }
+
+  const reportResponse = await request.post("/api/csp-report", {
+    data: { "csp-report": { "effective-directive": "script-src" } },
+  });
+  expect(reportResponse.status()).toBe(404);
+
   const workerResponse = await request.get("/sw.js");
   expect(workerResponse.ok()).toBe(true);
   expect(workerResponse.headers()["content-type"]).toMatch(

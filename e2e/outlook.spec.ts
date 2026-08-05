@@ -21,7 +21,12 @@ let unexpectedBrowserErrors: string[] = [];
 test.beforeEach(async ({ page }) => {
   unexpectedBrowserErrors = [];
   page.on("console", (message) => {
-    if (message.type() === "error") {
+    if (
+      message.type() === "error" &&
+      !message
+        .text()
+        .includes("was delivered in report-only mode, but does not specify a 'report-to'")
+    ) {
       unexpectedBrowserErrors.push(`console: ${message.text()}`);
     }
   });
@@ -729,6 +734,9 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   await expect(
     dialog.locator('.district-button[aria-pressed="true"]'),
   ).toBeFocused();
+  await expect(
+    dialog.locator('.district-button[aria-pressed="true"]'),
+  ).toHaveCSS("outline-style", "solid");
   await expect(page.locator(".site-header")).toHaveAttribute("inert", "");
   await expect(page.locator(".app-content")).toHaveAttribute("inert", "");
 
@@ -749,9 +757,6 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   expect(openingLayout.panelRadius).toBe("25px");
   expect(openingLayout.panelOutline).toBe("none");
   expect(openingLayout.pillOutline).toBe("none");
-  await expect(
-    dialog.locator('.district-button[aria-pressed="true"]'),
-  ).toHaveCSS("outline-style", "solid");
   await expect(page.locator(".location-panel")).toHaveAttribute(
     "data-phase",
     "open",

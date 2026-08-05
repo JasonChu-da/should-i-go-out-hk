@@ -383,3 +383,12 @@
 - [x] 一般 Playwright E2E 加入 WebKit，CI 安裝所需 browser；PWA 測試按實際 API 支援維持 Chromium
 - [x] 修正 README 對 AbortSignal、同步解壓／CSV parsing 及成本上限的描述
 - [x] 分批提交並通過 lint、typecheck、430 項 unit／coverage、build、52 項一般 E2E、10 項 PWA E2E、audit 及 diff check
+
+## 2026-08-05：第 7 步 CSS 清理
+
+- [x] 從 `origin/main` 建立隔離 worktree，保留原工作樹的未提交內容
+- [x] 盤點 globals.css selector、cascade、media query、component／測試引用及 computed style
+- [x] 移除三個零引用舊 selector，並把 `.ignored-data` 合併成單一 authoritative 定義
+- [x] 刪除未使用的 `getFailureMessage` export，把 publication-time 純邏輯移出 client component
+- [x] 確認未修改 CSP、security headers、API、評分、ZIP parser、dependencies 或視覺設計
+- [x] 通過 lint、typecheck、430 項 unit／coverage、build、52 項一般 E2E、10 項 PWA E2E、audit、computed-style A/B 及 diff check

@@ -4,7 +4,6 @@ import { metadata } from "@/app/layout";
 import manifest from "@/app/manifest";
 import {
   LAST_PUBLIC_UPDATE_STORAGE_KEY,
-  latestPublishedAt,
 } from "@/components/OutlookApp";
 import {
   IOS_INSTALL_HINT_STORAGE_KEY,
@@ -15,6 +14,7 @@ import {
 import { DataFailureState } from "@/components/States";
 import { buildOutlookFixture } from "@/e2e/fixtures/outlook";
 import { formatHktDateTime } from "@/lib/presentation/format";
+import { latestPublishedAt } from "@/lib/outlook/publication-time";
 
 const IPHONE_SAFARI =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) " +

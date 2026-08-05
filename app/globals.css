@@ -225,16 +225,6 @@ svg {
   white-space: nowrap;
 }
 
-.location-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.15rem 0.35rem;
-  margin: 0.12rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.67rem;
-  font-weight: 650;
-}
-
 .location-detail {
   display: none;
   margin: 0.45rem 0 0 2.85rem;
@@ -503,14 +493,6 @@ svg {
   margin-top: 0.15rem;
 }
 
-.result-mode {
-  margin-bottom: 0;
-  color: var(--hero-accent);
-  font-size: 0.7rem;
-  font-weight: 850;
-  letter-spacing: 0.08em;
-}
-
 .status-chip,
 .metric-status,
 .source-status {
@@ -638,12 +620,6 @@ svg {
   color: var(--text-secondary);
 }
 
-.ignored-data {
-  padding: 0.65rem;
-  border-radius: var(--radius-small);
-  background: var(--surface-muted);
-}
-
 .section-heading {
   display: flex;
   flex-wrap: wrap;
@@ -702,8 +678,7 @@ svg {
   color: var(--danger);
 }
 
-.metric-meta,
-.muted-copy {
+.metric-meta {
   color: var(--text-secondary);
   font-size: 0.64rem;
 }
@@ -1631,11 +1606,9 @@ html[data-weather-motion="off"] .loading-timeout-hint {
   color: var(--brand-light);
 }
 
-.location-meta,
 .location-detail,
 .result-summary,
 .metric-meta,
-.muted-copy,
 .source-list p,
 .utility-summary-copy small,
 .site-footer,
@@ -1949,14 +1922,12 @@ a {
 }
 
 .ignored-data {
+  padding: 0.65rem;
   border: 1px solid var(--border-subtle);
-  background: rgb(8 31 51 / 62%);
-  box-shadow: var(--shadow-soft);
-}
-
-.ignored-data {
   border-color: rgb(130 205 255 / 13%);
+  border-radius: var(--radius-small);
   background: rgb(7 28 46 / 64%);
+  box-shadow: var(--shadow-soft);
 }
 
 .decision-primary,

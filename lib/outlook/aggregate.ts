@@ -164,10 +164,6 @@ function locationDetails(locationId: LocationId): OutlookLocation {
   };
 }
 
-function failureMessage(result: ApiFetchResult, fallback: string): string {
-  return result.ok ? fallback : result.error.message;
-}
-
 export async function buildOutlookPayload(
   locationId: LocationId,
   dependencies: AggregateDependencies = {},
@@ -301,6 +297,3 @@ export async function buildOutlookPayload(
     sources,
   };
 }
-
-/** Used only by tests to create a readable fallback assertion. */
-export const getFailureMessage = failureMessage;

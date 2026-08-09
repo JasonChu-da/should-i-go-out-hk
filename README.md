@@ -110,7 +110,7 @@ Vitest 與 Playwright 全部使用本地 fixture／route interception，不依�
 
 一般 E2E 會以 axe-core 掃描首頁正常、離線、資料不可用及地區浮層狀態的 WCAG 2 A／AA 可自動判定規則。自動掃描不能判斷文案是否易懂、鍵盤流程是否合乎實際使用習慣、螢幕閱讀器體驗或所有視覺對比情境，不能取代人工及實機無障礙審核。
 
-測試檔案及案例數以每次 `npm test` 的輸出為準，不作固定驗收門檻。最近一次快照為 2026-08-02、程式 commit `14a0ba8`：21 個 Vitest test files、377 項測試全部通過；之後新增或刪除測試時應以新輸出取代這個快照。
+測試檔案及案例數以每次 `npm test` 的輸出為準，不作固定驗收門檻。最近一次快照為 2026-08-10、程式 commit `fc20b67`：21 個 Vitest test files、432 項測試全部通過；之後新增或刪除測試時應以新輸出取代這個快照。
 
 `npm run test:e2e:pwa` 必須在 `npm run build` 之後執行。它以獨立 production server 及本機 proxy 驗證 manifest、安裝條件、service worker headers／生命週期、靜態 cache、真正離線、重新連線，以及同一 `/sw.js` URL 從 v1 更新至 v2 的 waiting／activate 行為。Playwright 只在 Chromium-based browser 支援 Service Worker 測試，因此這組 PWA E2E 明確維持 Chromium-only，不會把 WebKit 未支援的 API 假裝成通過；它亦不使用已 deprecated 的 Lighthouse PWA audit。
 

@@ -1,10 +1,10 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-08-02
+更新日期：2026-08-10
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
 
-## 2026-08-02：目前驗證快照（程式 commit `14a0ba8`）
+## 2026-08-02：歷史驗證快照（程式 commit `14a0ba8`）
 
 - [x] `npm run lint -- --no-cache`、`npm run typecheck`、`npm test` 及 `npm run build` 通過
 - [x] `npm test` 實際輸出為 21 個 Vitest test files、377 項測試；數字只代表 2026-08-02 的 `14a0ba8`，日後以指令輸出為準
@@ -348,6 +348,13 @@
 - [x] 補充 null／無效時間單元測試、neutral clear asset E2E、失敗圖片 fallback 及 viewport 請求驗收
 - [x] 通過 lint、typecheck、400 項 Vitest、25 項一般 Playwright E2E、8 項 PWA E2E 及 production build；首頁列為 dynamic route
 
+## 2026-08-04：評分機制程式碼審核與說明書
+
+- [x] 追蹤正規化、freshness、評分輸入、純評分函式、UI 呼叫及相關測試
+- [x] 核對三種活動模式、所有數值門檻、降雨合併、警告規則及資料不足上限
+- [x] 建立 `docs/SCORING_MECHANISM_REPORT.md`，記錄實際算式、邊界、例子及審核觀察
+- [x] 執行 lint、400 項測試及 production build；全部通過
+
 ## 2026-08-04：Production-readiness audit 與高優先級修復
 
 - [x] 閱讀產品、API、驗收及既有計劃文件，盤點 production 程式碼、測試、資產與依賴
@@ -392,3 +399,11 @@
 - [x] 刪除未使用的 `getFailureMessage` export，把 publication-time 純邏輯移出 client component
 - [x] 確認未修改 CSP、security headers、API、評分、ZIP parser、dependencies 或視覺設計
 - [x] 通過 lint、typecheck、430 項 unit／coverage、build、52 項一般 E2E、10 項 PWA E2E、audit、computed-style A/B 及 diff check
+
+## 2026-08-10：校正評分文件並同步已審核的 `origin/main`
+
+- [x] 保存既有 `PLANS.md` 與未追蹤評分報告，無衝突 fast-forward 至 `fc20b67` 後完整恢復文件
+- [x] 採用上游既有 CSS 清理、publication-time 純函式及 report-only CSP，不修改 API schema、評分邏輯或 dependencies
+- [x] 校正一般模式高溫缺濕度的 `ignoredFactors` 與最高 7 分行為，並更新報告日期及程式基準
+- [x] 把 2026-08-02 快照標為歷史資料，並以本輪實際輸出更新 README 的最新測試快照
+- [x] 通過 lint、typecheck、432 項 unit／coverage、production build、52 項一般 E2E、10 項 PWA E2E 及 diff check

@@ -1,8 +1,23 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-08-02
+更新日期：2026-08-10
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
+
+## 2026-08-10：可部署候選版
+
+- [x] 完整閱讀 `AGENTS.md`、`docs/PRODUCT_SPEC.md`、`docs/API_SOURCES.md`、`docs/ACCEPTANCE_CRITERIA.md` 及 `PLANS.md`
+- [x] 唯讀核對 `main` 為 `6575932`、工作樹乾淨、本機落後 13 個 commit，且既有 `origin/main` 為已審查的 `fc20b67`
+- [x] 執行 `git fetch --prune origin`；三次暫時性 GitHub 連線失敗後重試成功，抓取後 `origin/main` 仍精確為 `fc20b67`，沒有未審查的新 commit
+- [x] 執行 `git merge --ff-only origin/main`，把本機 `main` fast-forward 至 `fc20b67`，沒有 rebase、reset 或歷史改寫
+- [x] 以 `npm ci` 兩次成功重建 401 個 packages；npm `11.8.0` 在 Windows 留下 6 個 orphaned optional WASM 目錄，`npm prune` 無動作，逐一路徑及 reparse point 驗證後只清理這 6 個可重建目錄，最終 `npm ls --depth=0` 沒有 missing 或 extraneous dependency
+- [x] 修補前 `npm audit` 為 2 High（`js-yaml@4.3.0`、`nanoid@3.3.16`），`npm audit --omit=dev` 為 1 High（`nanoid`）；執行 `npm update nanoid js-yaml --package-lock-only` 後，lockfile diff 只包含 `js-yaml@4.3.1` 與 `nanoid@3.3.18` 的兩個 records
+- [x] 修補後重新執行 `npm ci`、`npm audit` 及 `npm audit --omit=dev`；兩種 audit 均為 0 vulnerabilities，沒有剩餘 low、moderate、high 或 critical
+- [x] 移除 `README.md` 固定 377 項測試快照，並在 `docs/DEPENDENCY_SECURITY_AUDIT.md`、`docs/QA_REPORT.md` 及本 checklist 記錄本輪已取得的實際結果
+- [x] 依序通過 `npm run lint -- --no-cache`、`npm run typecheck`、`npm run test:coverage`（21 files、432／432；statements 91.14%、branches 85.11%、functions 93.79%、lines 93.64%）、`npm run build`、`npm run test:e2e`（52／52 Chromium／WebKit）、`npm run test:e2e:pwa`（10／10）、兩個 high audit、`npm ls --depth=0` 及 `git diff --check`
+- [x] 一般 E2E 首輪揭露 WebKit 地區 dialog 的 opening → open 重複 autofocus 競態，以及 21 場景矩陣接近 30 秒總 timeout；拆開初始 focus／focus-trap effects，並只把該矩陣的 test timeout 設為 60 秒後，WebKit 目標重複 6／6、最終完整 E2E 52／52 通過
+- [x] 以 production server PID `37964` 在 port 3101 驗證首頁 200、香港整體及沙田 runtime-valid payload、無效地區 400、report-only CSP、API `private, no-store`、五來源 metadata 及降級資料不計分；五來源均為 `ok` 且香港請求只需一次，完成後只終止該 PID，指定測試 ports 與額外 Node process 均無殘留
+- [x] 核對最終 Git diff 只包含兩個 dependency lock records、文件，以及品質閘門所需的最小 React／WebKit 測試修正；沒有意外生成檔，亦不改公開 API、評分契約或 CSP；不 commit、不 push、不部署
 
 ## 2026-08-02：目前驗證快照（程式 commit `14a0ba8`）
 

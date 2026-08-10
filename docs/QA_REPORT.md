@@ -1,6 +1,6 @@
 # MVP 驗收與 QA 紀錄
 
-目前自動測試快照：2026-08-02、程式 commit `14a0ba8`，`npm test` 為 21 個 Vitest test files、377 項測試全部通過。以下較早日期章節保留當時的行為證據，但舊的測試總數已移除；目前數量一律以這個日期化快照及最新指令輸出為準。
+本文件保留各輪驗收的日期化證據；最新候選版結果見 2026-08-10 章節，測試檔案及案例數一律以該輪實際指令輸出為準，不沿用過期的固定快照。
 
 驗收日期：2026-07-14（HKT）
 
@@ -324,3 +324,54 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 - `npm run test:e2e:pwa`：獨立 production PWA project 7 項全數通過，且 global setup／teardown 沒有殘留 3200／3201 listener。
 
 已知限制：Headless Chromium 不能代替 Android Chrome 的實際安裝對話框，也不能操作 iPhone Safari 的分享選單；兩者需在 HTTPS 部署後以實機 smoke test。離線體驗刻意不保存可互動的舊天氣畫面或 payload，只顯示安全離線頁／狀態及最新官方資料時間。
+
+## 2026-08-10：可部署候選版驗收
+
+本輪由已審查的 `fc20b67` 開始，不新增功能、不重設 UI，亦不改 `/api/outlook` 路徑、query、JSON schema、公開評分契約或 report-only CSP。
+
+### 依賴安全準備
+
+- 修補前完整 dependency tree 有 `js-yaml@4.3.0`、`nanoid@3.3.16` 兩個 High；production tree 只有 `nanoid` 一個 High。
+- `npm update nanoid js-yaml --package-lock-only` 只把兩個 lockfile records 更新至 `js-yaml@4.3.1`、`nanoid@3.3.18`，沒有帶動其他套件或新增 override。
+- 修補後 `npm audit` 與 `npm audit --omit=dev` 均為 `0 vulnerabilities`。
+- npm `11.8.0` 在 Windows 留下 6 個 orphaned optional WASM package directories；逐一驗證並只清理這些可重建目錄後，`npm ls --depth=0` 沒有 missing 或 extraneous dependency。詳情見 [`DEPENDENCY_SECURITY_AUDIT.md`](DEPENDENCY_SECURITY_AUDIT.md)。
+
+### 品質閘門與 production smoke
+
+依指定次序執行的最終結果如下；數量全部來自本輪實際輸出：
+
+- `npm run lint -- --no-cache`：通過，0 error／warning。
+- `npm run typecheck`：通過，Next route type generation 及 TypeScript 均無錯誤。
+- `npm run test:coverage`：21 個 test files、432／432 項通過；statements 91.14%（1637／1796）、branches 85.11%（1372／1612）、functions 93.79%（287／306）、lines 93.64%（1546／1651）。
+- `npm run build`：Next.js 16.2.12 production build 通過；`/` 與 `/api/outlook` 保持 dynamic route。
+- `npm run test:e2e`：Chromium／WebKit 共 52／52 項通過，沒有 retry。首輪 WebKit 失敗揭露地區 dialog 在 opening → open 時重跑 autofocus 的實作競態，以及 21 場景矩陣接近 Playwright 30 秒總 timeout；拆開初始 focus／focus-trap effects，並只把該矩陣 timeout 設為 60 秒後，WebKit 目標重複 6／6、完整 E2E 全數通過。
+- `npm run test:e2e:pwa`：10／10 項通過。
+- `npm audit --audit-level=high` 與 `npm audit --omit=dev --audit-level=high`：均為 `0 vulnerabilities`。
+- `npm ls --depth=0`：exit 0，沒有 missing 或 extraneous dependency；`git diff --check`：通過。
+
+Production build 以隱藏的直接 Node process 在 `127.0.0.1:3101` 啟動，保存並核對唯一 listener PID `37964`：
+
+- `/` 回傳 200，含非空 `Content-Security-Policy-Report-Only`，沒有 enforced `Content-Security-Policy`。
+- `/api/outlook?location=hong-kong` 第一次請求即回傳 runtime-valid `status: ok` payload；`hong-kong`／「香港整體」且 `localized: false`。
+- `/api/outlook?location=sha-tin` 回傳 runtime-valid `status: ok` payload；`sha-tin`／「沙田」且 `localized: true`。
+- 兩個成功 API 回應均為 `Cache-Control: private, no-store, max-age=0`；`not-a-district` 回傳 400、`no-store` 及 `{ "error": "地區參數無效。" }`。
+- 五個官方來源均為 `ok`、沒有 issues；來源陣列與各 nested source metadata 完全一致，overall status 亦與既有分類函式一致：
+
+| 來源 | 發布時間（UTC） | 原始發布時間 | 擷取時間（UTC） |
+| --- | --- | --- | --- |
+| 即時天氣 `weather` | 2026-08-10T09:02:00.000Z | 2026-08-10T17:02:00+08:00 | 2026-08-10T09:17:23.875Z |
+| 天氣警告 `warnings` | 2026-08-09T22:45:00.000Z | 2026-08-10T06:45:00+08:00 | 2026-08-10T09:17:23.874Z |
+| 本港預報 `forecast` | 2026-08-10T08:45:00.000Z | 2026-08-10T16:45:00+08:00 | 2026-08-10T09:17:25.455Z |
+| AQHI `aqhi` | 2026-08-10T08:30:00.000Z | 2026-08-10T16:30:00 | 2026-08-10T09:17:23.827Z |
+| 未來兩小時降雨 `rainfallNowcast` | 2026-08-10T09:00:00.000Z | 202608101700 | 2026-08-10T09:17:23.965Z |
+
+Live payload 在一般外出／跑步踏單車／晾衫模式分別得到 0（avoid）、0（avoid）、7（prepare），沒有 ignored factor。另以同一份 runtime-valid live payload 的副本逐項注入 stale、malformed、failed／unavailable 狀態，直接經 production 使用的 `toScoringInput` 與 `scoreOutlook` 驗證：雨量、短期降雨、溫度、濕度、UV、AQHI、預報及警告 evidence 均不保留 `value`，三個模式均回傳 `score: null`／`verdict: unavailable`。本輪 live 來源全為 fresh／ok，因此沒有把這項受控降級檢查誤稱為 live 官方來源失敗；自動 coverage suite 另涵蓋 stale、malformed 及 unavailable 路徑。
+
+Smoke 無論成功或失敗均由 `finally` 只處理保存的 PID；本輪已終止 PID `37964`，並確認 3100、3101、3200、3201 沒有 listener，亦沒有額外 Node process 殘留。
+
+### 已知限制
+
+- 未執行 Android Chrome／iPhone Safari 真機驗收，也沒有正式 Vercel 部署或 HTTPS 驗收。
+- 五個官方來源本輪全部成功，未實際遇到 live stale／malformed／unavailable 回應；這些 fail-safe 由 live payload 的受控降級檢查及完整自動測試驗證。
+- CSP 按範圍維持 report-only，沒有新增 reporting backend。
+- npm `11.8.0` 在此 Windows 環境於乾淨 `npm ci` 後可能再次留下 6 個 optional WASM 孤兒目錄；它們不在 lockfile root tree 或 production bundle，但要以 `npm ls --depth=0` 驗收並按已記錄的精確路徑處理。

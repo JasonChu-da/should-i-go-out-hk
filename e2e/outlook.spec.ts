@@ -510,6 +510,7 @@ test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ p
 });
 
 test("Weather Scene Preview 可驗收全部 21 個背景狀態", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/scene-preview");
 
@@ -746,6 +747,7 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
 
   const lastDistrict = page.getByRole("button", { name: "離島區" });
   await lastDistrict.focus();
+  await expect(lastDistrict).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(trigger).toBeFocused();
   await page.keyboard.press("Shift+Tab");

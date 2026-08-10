@@ -1,5 +1,20 @@
 # Dependency Security Audit
 
+## 2026-08-10：可部署候選版
+
+本輪由已審查的 `fc20b67` 開始，以 Node.js `v24.13.1`、npm `11.8.0` 重建 dependency tree。修補前結果：
+
+- `npm audit`：2 個 High，分別是 `js-yaml@4.3.0` 的 [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) 及 `nanoid@3.3.16` 的 [GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8)。
+- `npm audit --omit=dev`：1 個 High，只包含 production tree 的 `nanoid`；`js-yaml` 是 dev-only。
+
+依既有相容 semver ranges 執行 `npm update nanoid js-yaml --package-lock-only`。審查後 lockfile diff 只改兩個 package records 的 `version`、`resolved` 及 `integrity`：`js-yaml` 更新至 `4.3.1`，`nanoid` 更新至 `3.3.18`；沒有改 `package.json`、既有 overrides、父依賴 ranges 或其他 package records，亦沒有執行 `npm audit fix --force`。
+
+修補後重新執行 `npm ci`，`npm audit` 及 `npm audit --omit=dev` 均為 `0 vulnerabilities`，沒有剩餘 Low、Moderate、High 或 Critical advisory。完整品質閘門結尾再次執行 `npm audit --audit-level=high` 與 `npm audit --omit=dev --audit-level=high`，兩者仍為 `0 vulnerabilities`。
+
+Windows 上的 npm `11.8.0` 在跳過 Sharp／resolver 的非本平台 optional parent 後，仍留下 6 個被 `npm ls` 視為 extraneous 的 optional WASM 子套件；`npm prune` 沒有移除它們。本輪逐一驗證它們都位於本專案 `node_modules`、是一般目錄且不含 reparse point 後，只移除這 6 個可由 `npm ci` 重建的孤兒目錄。最終 `npm ls --depth=0` exit 0，沒有 missing 或 extraneous dependency；這項 npm／Windows 行為不涉及 tracked dependency manifest 或 production bundle。
+
+最終 lockfile diff 仍只包含 `node_modules/js-yaml` 與 `node_modules/nanoid` 兩筆 records 的版本、resolved URL 及 integrity；完整驗收沒有再改 dependency manifest 或 lockfile。
+
 ## 2026-08-02 follow-up
 
 本次 production-readiness audit 已處理先前仍留在 dependency tree 的高嚴重度 advisories：
@@ -170,5 +185,5 @@ eslint-config-next@16.2.10
 ## 已知限制
 
 - 本次沒有在 GitHub／Vercel 的實際 deployment artifact 內做 software composition scan；production 判斷來自 lockfile、`npm audit --omit=dev`、dependency tree 與原始碼 feature usage。
-- npm advisories 與 registry metadata 在新漏洞發布後可能快速更新；本報告是 2026-07-27 的快照。
-- `node_modules` 頂層另顯示六個不在 lockfile 的 extraneous optional WASM packages。它們不屬本次 12 個 records；CI 的 `npm ci` 會以 lockfile 建立乾淨環境。本次沒有刪除它們。
+- npm advisories 與 registry metadata 在新漏洞發布後可能快速更新；下方原始調查是 2026-07-27 的快照，頁首 follow-up 記錄後續重驗。
+- 2026-07-27 調查當時，`node_modules` 頂層另顯示六個不在 lockfile 的 extraneous optional WASM packages。它們不屬當時審查的 12 個 records，當時亦沒有刪除；2026-08-10 的驗證與處理結果見頁首 follow-up。

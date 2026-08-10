@@ -384,10 +384,15 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
   useEffect(() => {
     if (!pickerExpanded) return;
 
-    const panel = locationPanel.current;
-    panel
+    locationPanel.current
       ?.querySelector<HTMLElement>('.district-button[aria-pressed="true"]')
       ?.focus();
+  }, [pickerExpanded]);
+
+  useEffect(() => {
+    if (!pickerExpanded) return;
+
+    const panel = locationPanel.current;
 
     const containFocus = (event: KeyboardEvent) => {
       if (event.key === "Escape") {

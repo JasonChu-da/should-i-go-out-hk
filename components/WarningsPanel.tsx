@@ -72,10 +72,10 @@ interface ForecastDetailsProps {
 }
 
 export function ForecastDetails({ forecast, weather }: ForecastDetailsProps) {
-  const supportingMessages = [
+  const supportingMessages = [...new Set([
     ...weather.specialWeatherTips,
     ...weather.warningMessages,
-  ];
+  ])];
 
   return (
     <details className="utility-details forecast-utility">

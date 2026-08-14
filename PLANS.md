@@ -4,6 +4,44 @@
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
 
+## 2026-08-14：代碼健康審計與技術債治理
+
+### 修改前問題清單
+
+- **P0：沒有發現。** 現有 threat model 下沒有可證實的資料損失、可遠端利用的高危漏洞或全站嚴重不可用路徑；2026-08-14 `npm audit` 亦為 0 vulnerabilities。
+- **P1：附加 nowcast 可錯誤建立評分充分性。** 證據：`lib/scoring/score.ts` 的 `scoreOutlook` 把 fresh `rainfallNowcast` 加入 `relevantFreshCount`；因此四個核心來源全部缺失但 nowcast 成功時，純函式仍可從 10 分產生結論，違反 D-008「即使附加 nowcast 成功亦不顯示分數」。目前 `OutlookApp` 會因 `payload.status === "error"` 擋住畫面，故屬被上層遮蔽、其他 caller 仍可觸發的核心契約 bug。最小修復是把計數明確收窄為核心證據並補純函式 regression test。風險只限全核心證據不可用的邊界；正常、partial 及 nowcast penalty 不應改變。
+- **P1：一般 JSON client 拒絕 response 時沒有一致釋放 transport。** 證據：`lib/api/client.ts` 的 `requestJson` 在 HTTP／Content-Type 錯誤直接 return，未 cancel body 或 abort；Content-Length／串流超限又等待 `cancel()`，cleanup promise 若不收斂會把明確 `too-large` 拖成逾時。相同根因已在 nowcast client 處理。最小修復是 fire-and-forget cancel、立即 abort，並以 cancel/abort 及永不完成 cleanup 的 regression tests 覆蓋。風險是自訂 fetch double 對 abort 的非標準反應；結果型別及 cache 契約不變。
+- **P1：新背景圖片失敗會連上一張可用圖片也隱藏。** 證據：`components/weather-scene/WeatherBackground.tsx` 用單一 `imageFailed` 套到 previous/current 兩層；incoming 圖觸發 error 後 reducer 回退 previous，但同一 state 又把 previous 設為 `visibility:hidden`，違反 D-039 的「失敗時保留上一張可用背景」。最小修復是刪除跨圖片共享的 failure state，只讓實際失敗的 `<img>` 隱藏並沿用既有 reducer 回退；加入真實瀏覽器轉場失敗 regression。風險集中於圖片 load/error 交接，既有首載全失敗 fallback 測試必須繼續通過。
+- **P2：濕度值與 freshness 狀態可能被 UI 隱藏。** 證據：`components/DataCards.tsx` 只在氣溫有值時 render 濕度；氣溫缺失但濕度 fresh 時，會隱藏實際參與運動／晾衫評分的濕度。濕度 stale 且仍有值時亦只顯示數字，不顯示「可能已過時，不計分」。最小修復是在同一卡片獨立顯示可用濕度及其非 fresh 狀態，補 SSR regression tests。風險是體感卡多一行既有樣式文字，不改評分或資料契約。
+- **P3：預報提示假設外部字串唯一。** 證據：`components/WarningsPanel.tsx` 合併 `specialWeatherTips` 與 `warningMessages` 後直接以 message 作 React key；兩個來源出現相同字串時會重複顯示並產生 duplicate-key warning。最小修復是用原生 `Set` 去重並補測試。風險是只移除完全相同的重複提示。
+- **P3：兩個零 production caller 的 runtime wrapper。** 證據：全庫引用搜尋顯示 `fetchGovernmentJson` 只在 `lib/api/client.ts` 自我定義；`CompleteFailure` 只由 `tests/ui.test.tsx` 使用，production 已直接使用 `DataFailureState`。最小修復是刪除 alias／wrapper，測試直接 render 真正元件。風險是漏掉字串式或框架 convention 引用；兩者都不是 framework entry，會以全庫搜尋、typecheck 及 build 驗證。
+
+### 執行計劃
+
+- [x] 先加入會在舊實作失敗的 scoring、JSON cleanup、humidity、duplicate message 及背景轉場 regression tests；舊實作的目標測試為 6 failed／181 passed
+- [x] 依 P1 → P2 → P3 次序作最小根因修復，不新增 dependency、不改 API／評分正常路徑／視覺設計
+- [x] 刪除已確認沒有 production caller 的 runtime alias／wrapper，再次搜尋引用
+- [x] 執行 lint、typecheck、完整 unit、coverage、production build、Chromium／WebKit E2E、production PWA E2E、audit、dependency tree 及 diff check
+- [x] 複核最終 diff 與原有未提交修改邊界，記錄保留的中低優先級技術債
+
+### 最終驗證
+
+- `npm run lint`、`npm run typecheck`、`npm run build`：全部通過
+- `npm test`：21 files、441／441 tests 通過
+- `npm run test:coverage`：441／441 tests 通過；statements 91.66%、branches 85.66%、functions 92.23%、lines 94.36%
+- `npm run test:e2e`：Chromium／WebKit 合計 56／56 通過
+- `npm run test:e2e:pwa`：Chromium 10／10 通過
+- `npm audit --json`、`npm audit --omit=dev --json`：0 vulnerabilities；`npm ls --depth=0` 與 `git diff --check` 通過
+- 2026-08-14 重驗四個官方 JSON endpoint 及 CSDI nowcast ZIP；ZIP 為單一 17 欄 CSV、3,360 筆資料列，格式與 runtime parser 契約一致
+
+### 保留技術債
+
+- **P2：`app/globals.css` 的 cascade 維護成本。** 單檔約 2,700 行，包含多輪視覺重設 override；本輪搜尋沒有找到可安全刪除的零引用 selector。沒有在缺乏視覺基準的情況重排 cascade，以免製造跨 viewport 回歸；待下一次實質 UI 改版時按元件邊界整理並做 computed-style／截圖 A/B。
+- **P2：`components/OutlookApp.tsx` 責任集中。** 約 600 行同時管理請求競態、定位、dialog focus／animation 與頁面編排；現有 race、accessibility 及 E2E 保護完整，現在抽層只會搬動複雜度。待其中一條流程需要獨立演進時才提取 reducer 或 hook。
+- **P2：CSP 尚為 Report-Only。** 現有文件已記錄 `unsafe-inline` 與收集方式；本產品沒有使用者文字輸入或 raw HTML，但 enforced nonce／hash CSP 仍是 defense-in-depth 工作，須在真實部署環境先驗證 report。
+- **P3：可用但非必要的 dependency 更新。** `axe-core` 4.13.0、Next／`eslint-config-next` 16.3.1，以及 ESLint／TypeScript／`@types/node` 的下一個 major 可用；目前兩種 audit 均為零漏洞，因此留給隔離的 dependency maintenance 批次並重跑完整閘門。
+- **P3：真實部署與實機驗收仍屬外部 checkpoint。** 本機 production、Chromium、WebKit 與 PWA 全通過，但 CDN／serverless runtime 及 iPhone／Android 實機行為仍需在部署後驗證。
+
 ## 2026-08-10：可部署候選版
 
 - [x] 完整閱讀 `AGENTS.md`、`docs/PRODUCT_SPEC.md`、`docs/API_SOURCES.md`、`docs/ACCEPTANCE_CRITERIA.md` 及 `PLANS.md`

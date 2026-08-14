@@ -273,14 +273,14 @@ function unavailableResult(ignoredFactors: IgnoredFactor[]): ScoringResult {
 export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringResult {
   const factors: ScoreFactor[] = [];
   const ignoredFactors: IgnoredFactor[] = [];
-  let relevantFreshCount = 0;
+  let coreFreshCount = 0;
 
   const applyRainRisk = (): void => {
     const candidates: RainRiskCandidate[] = [];
     let freshNowcast: RainfallNowcastValue | null = null;
 
     if (isFresh(input.rainfallMm)) {
-      relevantFreshCount += 1;
+      coreFreshCount += 1;
       const value = input.rainfallMm.value;
       if (value > 0) {
         candidates.push({
@@ -295,7 +295,6 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
     }
 
     if (isFresh(input.rainfallNowcast)) {
-      relevantFreshCount += 1;
       freshNowcast = input.rainfallNowcast.value;
       const generatedAtMs = Date.parse(input.generatedAt);
       for (const [index, period] of freshNowcast.periods.entries()) {
@@ -328,7 +327,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
 
     if (mode === "laundry") {
       if (isFresh(input.forecastDescription)) {
-        relevantFreshCount += 1;
+        coreFreshCount += 1;
         const forecastLevel = getForecastRainLevel(
           input.forecastDescription.value,
         );
@@ -427,7 +426,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
 
   const applyTemperature = (): void => {
     if (isFresh(input.temperatureC)) {
-      relevantFreshCount += 1;
+      coreFreshCount += 1;
       const value = input.temperatureC.value;
       const penalty = getPenalty(TEMPERATURE_THRESHOLDS, value, mode);
       if (penalty > 0) {
@@ -449,7 +448,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
 
   const applyHumidity = (): void => {
     if (isFresh(input.humidityPercent)) {
-      relevantFreshCount += 1;
+      coreFreshCount += 1;
       const value = input.humidityPercent.value;
       const penalty = getPenalty(HUMIDITY_THRESHOLDS, value, mode);
       if (penalty > 0) {
@@ -507,7 +506,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
 
   if (mode !== "laundry") {
     if (isFresh(input.uvIndex)) {
-      relevantFreshCount += 1;
+      coreFreshCount += 1;
       const value = input.uvIndex.value;
       const penalty = getPenalty(UV_THRESHOLDS, value, mode);
       if (penalty > 0) {
@@ -527,7 +526,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
     }
 
     if (isFresh(input.aqhi)) {
-      relevantFreshCount += 1;
+      coreFreshCount += 1;
       const { value, display } = input.aqhi.value;
       const penalty = getPenalty(AQHI_THRESHOLDS, value, mode);
       if (penalty > 0) {
@@ -549,7 +548,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
 
   if (isFresh(input.warnings)) {
     const warnings = deduplicateWarnings(input.warnings.value, mode);
-    if (warnings.length > 0) relevantFreshCount += 1;
+    if (warnings.length > 0) coreFreshCount += 1;
 
     for (const warning of warnings) {
       const rule = WARNING_RULES[warning.code];
@@ -630,7 +629,7 @@ export function scoreOutlook(input: ScoringInput, mode: ActivityMode): ScoringRe
     );
   }
 
-  if (relevantFreshCount === 0) return unavailableResult(ignoredFactors);
+  if (coreFreshCount === 0) return unavailableResult(ignoredFactors);
 
   const totalPenalty = factors.reduce((sum, factor) => sum + factor.penalty, 0);
   const rawScore = Math.max(0, Math.min(10, 10 - totalPenalty));

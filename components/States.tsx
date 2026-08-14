@@ -16,13 +16,10 @@ export function LoadingState() {
   );
 }
 
-interface CompleteFailureProps {
-  onRetry: () => void;
-}
-
-interface DataFailureStateProps extends CompleteFailureProps {
+interface DataFailureStateProps {
   kind: "offline" | "unavailable";
   lastPublicUpdate?: string | null;
+  onRetry: () => void;
 }
 
 export function DataFailureState({
@@ -59,8 +56,4 @@ export function DataFailureState({
       </div>
     </section>
   );
-}
-
-export function CompleteFailure({ onRetry }: CompleteFailureProps) {
-  return <DataFailureState kind="unavailable" onRetry={onRetry} />;
 }

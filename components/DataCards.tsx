@@ -246,9 +246,22 @@ export function DataCards({
                   : METRIC_STATUS_LABELS[weather.humidityPercent.status]}
               </span>
               <MetricState metric={weather.temperatureC} />
+              {humidityVisible ? (
+                <MetricState metric={weather.humidityPercent} />
+              ) : null}
             </>
           ) : (
-            <MissingValue metric={weather.temperatureC} compact />
+            <>
+              <MissingValue metric={weather.temperatureC} compact />
+              {humidityVisible ? (
+                <>
+                  <span className="summary-status">
+                    濕度 {weather.humidityPercent.value}%
+                  </span>
+                  <MetricState metric={weather.humidityPercent} />
+                </>
+              ) : null}
+            </>
           )}
         </article>
 

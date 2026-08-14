@@ -128,10 +128,14 @@ async function requestJson(
     });
 
     if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      controller.abort();
       return failure("http");
     }
 
     if (!isJsonContentType(response.headers.get("content-type"))) {
+      void response.body?.cancel().catch(() => undefined);
+      controller.abort();
       return failure("content-type");
     }
 
@@ -140,9 +144,8 @@ async function requestJson(
       Number.isFinite(contentLength) &&
       contentLength > MAX_JSON_RESPONSE_BYTES
     ) {
-      const cancelPromise = response.body?.cancel();
+      void response.body?.cancel().catch(() => undefined);
       controller.abort();
-      await cancelPromise?.catch(() => undefined);
       return failure("too-large");
     }
 
@@ -159,9 +162,8 @@ async function requestJson(
         if (chunk.done) break;
         bytesRead += chunk.value.byteLength;
         if (bytesRead > MAX_JSON_RESPONSE_BYTES) {
-          const cancelPromise = reader.cancel();
+          void reader.cancel().catch(() => undefined);
           controller.abort();
-          await cancelPromise.catch(() => undefined);
           return failure("too-large");
         }
         json += decoder.decode(chunk.value, { stream: true });
@@ -173,6 +175,8 @@ async function requestJson(
         throw error;
       }
 
+      void reader.cancel().catch(() => undefined);
+      controller.abort();
       return failure("invalid-json");
     }
 
@@ -278,8 +282,6 @@ export async function fetchJson(
     }
   }
 }
-
-export const fetchGovernmentJson = fetchJson;
 
 /** Clear module memory between isolated tests or after an explicit refresh. */
 export function clearApiCache(): void {

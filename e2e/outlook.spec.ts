@@ -509,6 +509,40 @@ test("背景圖片失敗時保留純色 fallback 且不顯示破圖", async ({ p
   );
 });
 
+test("新場景圖片失敗時保留上一張可用背景", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/weather/scenes/day/rain-mobile.webp", (route) =>
+    route.fulfill({ status: 200, contentType: "image/webp", body: "" }),
+  );
+  await mockOutlookApi(page, (locationId) =>
+    locationId === "wan-chai"
+      ? withStaleIconFreshObservedRain(buildOutlookFixture(locationId))
+      : buildOutlookFixture(locationId),
+  );
+
+  await page.goto("/");
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expectBackgroundSource(page, "/weather/scenes/day/clear-mobile.webp");
+
+  await page.getByRole("button", { name: /香港整體/ }).click();
+  await page.getByRole("button", { name: "灣仔", exact: true }).click();
+  await expect(page.locator("main")).toHaveAttribute("data-scene", "rain");
+  await expect
+    .poll(() =>
+      page.locator(".weather-background-image").evaluateAll((images) =>
+        images.some((image) => {
+          const element = image as HTMLImageElement;
+          return (
+            new URL(element.currentSrc).pathname.endsWith(
+              "/clear-mobile.webp",
+            ) && getComputedStyle(element).visibility === "visible"
+          );
+        }),
+      ),
+    )
+    .toBe(true);
+});
+
 test("Weather Scene Preview 可驗收全部 21 個背景狀態", async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 1280, height: 720 });

@@ -130,6 +130,41 @@ describe("fetchJson", () => {
     expect(JSON.stringify(result)).not.toContain("privateDetail");
   });
 
+  it.each([
+    ["HTTP 錯誤", 503, "application/json", "http"],
+    ["錯誤 Content-Type", 200, "text/html", "content-type"],
+  ] as const)("%s 時取消 response body 並中止 request", async (
+    _case,
+    status,
+    contentType,
+    errorType,
+  ) => {
+    const cancel = vi.fn();
+    let signal: AbortSignal | undefined;
+    const stream = new ReadableStream<Uint8Array>({ cancel });
+
+    const result = await fetchJson(`https://example.test/${errorType}`, {
+      fetchImpl: async (_input, init) => {
+        signal = init?.signal ?? undefined;
+        return new Response(stream, {
+          status,
+          headers: { "Content-Type": contentType },
+        });
+      },
+      ttlMs: 0,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: errorType,
+        message: API_ERROR_MESSAGES[errorType],
+      },
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(signal?.aborted).toBe(true);
+  });
+
   it("rejects a successful response without an application/json media type", async () => {
     const result = await fetchJson("https://example.test/html", {
       fetchImpl: async () =>
@@ -194,6 +229,35 @@ describe("fetchJson", () => {
       error: { type: "too-large", message: API_ERROR_MESSAGES["too-large"] },
     });
     expect(streamed).toEqual(declared);
+  });
+
+  it("rejects a declared oversized body without waiting for cleanup", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      cancel: () => new Promise<void>(() => undefined),
+    });
+
+    const resultPromise = fetchJson("https://example.test/hanging-cleanup", {
+      fetchImpl: async (_input, init) => {
+        signal = init?.signal ?? undefined;
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": String(MAX_JSON_RESPONSE_BYTES + 1),
+          },
+        });
+      },
+      timeoutMs: 100,
+      ttlMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(resultPromise).resolves.toEqual({
+      ok: false,
+      error: { type: "too-large", message: API_ERROR_MESSAGES["too-large"] },
+    });
+    expect(signal?.aborted).toBe(true);
   });
 
   it("aborts an upstream request at the timeout", async () => {

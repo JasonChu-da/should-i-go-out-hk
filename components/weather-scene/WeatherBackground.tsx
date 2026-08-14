@@ -5,7 +5,6 @@ import {
   useEffect,
   useReducer,
   useRef,
-  useState,
 } from "react";
 import { weatherBackgroundAsset } from "@/lib/weather-scene/background-assets";
 import type { WeatherSceneResult } from "@/lib/weather-scene/types";
@@ -60,13 +59,11 @@ function backgroundReducer(
 function BackgroundLayer({
   scene,
   className,
-  imageHidden,
   onError,
   onLoad,
 }: {
   scene: BackgroundVisual;
   className: string;
-  imageHidden: boolean;
   onError?: () => void;
   onLoad?: () => void;
 }) {
@@ -98,7 +95,6 @@ function BackgroundLayer({
           src={mobile}
           alt=""
           decoding="async"
-          style={imageHidden ? { visibility: "hidden" } : undefined}
           onError={(event) => {
             event.currentTarget.style.visibility = "hidden";
             onError?.();
@@ -117,7 +113,6 @@ export function WeatherBackground({
   scene,
   transitionEnabled,
 }: WeatherBackgroundProps) {
-  const [imageFailed, setImageFailed] = useState(false);
   const [state, dispatch] = useReducer(backgroundReducer, {
     current: {
       scene: scene.scene,
@@ -137,11 +132,9 @@ export function WeatherBackground({
     ? { scene: sceneName, period: scenePeriod, severity: sceneSeverity }
     : state.current;
   const handleImageError = useCallback(() => {
-    setImageFailed(true);
     dispatch({ type: "fail", keepCurrent: scene.scene === "neutral" });
   }, [scene.scene]);
   const handleImageLoad = useCallback(() => {
-    setImageFailed(false);
     dispatch({ type: "reveal", transition: transitionEnabled });
   }, [transitionEnabled]);
 
@@ -180,7 +173,6 @@ export function WeatherBackground({
         <BackgroundLayer
           scene={state.previous}
           className="is-previous"
-          imageHidden={imageFailed}
         />
       ) : null}
       <BackgroundLayer
@@ -190,7 +182,6 @@ export function WeatherBackground({
             ? "is-current is-entering"
             : "is-current"
         }
-        imageHidden={imageFailed}
         onError={handleImageError}
         onLoad={handleImageLoad}
       />

@@ -459,12 +459,12 @@ describe("scoreOutlook", () => {
     expect(result.ignoredFactors).toContainEqual(expect.objectContaining({ id: "temperature" }));
   });
 
-  it("returns no score when the selected mode has no fresh relevant factor", () => {
+  it("returns no score when only the additive nowcast source is fresh", () => {
     const input: ScoringInput = {
       generatedAt: GENERATED_AT,
       location: { id: "hong-kong", label: "香港整體" },
       rainfallMm: missing(),
-      rainfallNowcast: missing(),
+      rainfallNowcast: nowcast([1, 0, 0, 0]),
       temperatureC: missing(),
       humidityPercent: missing(),
       uvIndex: missing(),

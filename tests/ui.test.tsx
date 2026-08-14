@@ -10,7 +10,7 @@ import {
 import { ModeTabs } from "@/components/ModeTabs";
 import { ResultHero } from "@/components/ResultHero";
 import { SourceDetails } from "@/components/SourceDetails";
-import { CompleteFailure, LoadingState } from "@/components/States";
+import { DataFailureState, LoadingState } from "@/components/States";
 import { ActiveWarnings, ForecastDetails } from "@/components/WarningsPanel";
 import { WeatherScene } from "@/components/weather-scene/WeatherScene";
 import { WeatherScenePreview } from "@/components/weather-scene/WeatherScenePreview";
@@ -133,7 +133,9 @@ describe("mobile UI semantics", () => {
 
   it("provides understandable loading and complete-failure actions", () => {
     const loading = renderToStaticMarkup(<LoadingState />);
-    const failed = renderToStaticMarkup(<CompleteFailure onRetry={vi.fn()} />);
+    const failed = renderToStaticMarkup(
+      <DataFailureState kind="unavailable" onRetry={vi.fn()} />,
+    );
 
     expect(loading).toContain('aria-busy="true"');
     expect(loading).toContain("載入時間比預期長");
@@ -226,6 +228,42 @@ describe("mobile UI semantics", () => {
     expect(html).toContain(payload.rainfallNowcast.forecast.message);
   });
 
+  it("shows humidity independently and labels a stale humidity value", () => {
+    const withoutTemperature = buildOutlookFixture();
+    withoutTemperature.weather.temperatureC.status = "missing";
+    withoutTemperature.weather.temperatureC.value = null;
+    withoutTemperature.weather.temperatureC.message = "氣溫暫無資料。";
+    withoutTemperature.weather.humidityPercent.value = 82;
+    const withoutTemperatureHtml = renderToStaticMarkup(
+      <DataCards
+        weather={withoutTemperature.weather}
+        aqhi={withoutTemperature.aqhi}
+        rainfallNowcast={withoutTemperature.rainfallNowcast}
+        location={withoutTemperature.location}
+        generatedAt={withoutTemperature.generatedAt}
+      />,
+    );
+
+    const staleHumidity = buildOutlookFixture();
+    staleHumidity.weather.humidityPercent.status = "stale";
+    staleHumidity.weather.humidityPercent.value = 88;
+    staleHumidity.weather.humidityPercent.message =
+      "資料可能已過時，不會用於計分。";
+    const staleHumidityHtml = renderToStaticMarkup(
+      <DataCards
+        weather={staleHumidity.weather}
+        aqhi={staleHumidity.aqhi}
+        rainfallNowcast={staleHumidity.rainfallNowcast}
+        location={staleHumidity.location}
+        generatedAt={staleHumidity.generatedAt}
+      />,
+    );
+
+    expect(withoutTemperatureHtml).toContain("濕度 82%");
+    expect(staleHumidityHtml).toContain("濕度 88%");
+    expect(staleHumidityHtml).toContain("可能已過時，不計分");
+  });
+
   it("shows confirmed warning items even when another item is malformed", () => {
     const clear = buildOutlookFixture();
     const active = buildOutlookFixture();
@@ -267,6 +305,8 @@ describe("mobile UI semantics", () => {
 
   it("keeps forecast copy in a compact native disclosure", () => {
     const payload = buildOutlookFixture();
+    payload.weather.specialWeatherTips = ["重複提示"];
+    payload.weather.warningMessages = ["重複提示"];
     const html = renderToStaticMarkup(
       <ForecastDetails forecast={payload.forecast} weather={payload.weather} />,
     );
@@ -274,6 +314,7 @@ describe("mobile UI semantics", () => {
     expect(html).toContain("<details");
     expect(html).toContain("本港預報與提示");
     expect(html).toContain("大致天晴，部分時間有陽光。");
+    expect(html.match(/重複提示/g)).toHaveLength(1);
   });
 
   it("renders unavailable scoring, factors and ignored data without a score gauge", () => {

@@ -485,15 +485,6 @@ svg {
   --hero-soft: var(--surface-muted);
 }
 
-.result-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: 0.15rem;
-}
-
-.status-chip,
 .metric-status,
 .source-status {
   display: inline-flex;
@@ -503,12 +494,6 @@ svg {
   font-size: 0.62rem;
   font-weight: 850;
   line-height: 1.2;
-}
-
-.status-chip {
-  padding: 0.3rem 0.48rem;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  color: var(--text-secondary);
 }
 
 .verdict {
@@ -1821,24 +1806,6 @@ html[data-weather-motion="off"] .loading-timeout-hint {
   color: var(--background-deep);
   font-size: 1rem;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--hero-accent) 22%, transparent);
-}
-
-.status-chip {
-  border: 1px solid var(--border-subtle);
-  background: rgb(73 169 248 / 10%);
-  color: var(--text-secondary);
-}
-
-.status-chip[data-status="ready"] {
-  border-color: rgb(88 214 180 / 24%);
-  background: rgb(88 214 180 / 12%);
-  color: #87e7cc;
-}
-
-.status-chip[data-status="limited"] {
-  border-color: rgb(245 184 75 / 26%);
-  background: rgb(245 184 75 / 12%);
-  color: #ffd487;
 }
 
 .outlook-index {

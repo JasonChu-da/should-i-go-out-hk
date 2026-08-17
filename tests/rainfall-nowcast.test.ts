@@ -10,7 +10,6 @@ import {
 import {
   CSDI_RAINFALL_NOWCAST_HEADER,
   parseRainfallNowcastCsv,
-  RAINFALL_NOWCAST_HEADER,
 } from "@/lib/validation/rainfall-nowcast";
 
 const FIXTURE = readFileSync(
@@ -20,7 +19,14 @@ const FIXTURE = readFileSync(
   ),
   "utf8",
 );
-const HEADER = RAINFALL_NOWCAST_HEADER.join(",");
+const HEADER = CSDI_RAINFALL_NOWCAST_HEADER.join(",");
+const LEGACY_HEADER = [
+  "Updated Date and Time (in Hong Kong Time)",
+  "Ending Date and Time (in Hong Kong Time)",
+  "Latitude (degree)",
+  "Longitude (degree)",
+  "Half-hourly Nowcast Accumulated Rainfall (mm)",
+].join(",");
 const UPDATE = "202607301712";
 const ENDINGS = [
   "202607301742",
@@ -29,6 +35,34 @@ const ENDINGS = [
   "202607301912",
 ] as const;
 
+function timestampFields(timestamp: string): (number | string)[] {
+  return [
+    timestamp.slice(0, 4),
+    Number(timestamp.slice(4, 6)),
+    Number(timestamp.slice(6, 8)),
+    Number(timestamp.slice(8, 10)),
+    Number(timestamp.slice(10, 12)),
+    "",
+    "UTC+8",
+  ];
+}
+
+function csdiRow(
+  endingAt: string,
+  rainfall: number | string,
+  latitude: number | string = 22.2764,
+  longitude: number | string = 114.1758,
+  updatedAt = UPDATE,
+): string {
+  return [
+    ...timestampFields(updatedAt),
+    ...timestampFields(endingAt),
+    latitude,
+    longitude,
+    rainfall,
+  ].join(",");
+}
+
 function csvForPoint(
   rainfall: readonly (number | string)[],
   latitude = 22.2764,
@@ -36,9 +70,13 @@ function csvForPoint(
 ): string {
   return [
     HEADER,
-    ...ENDINGS.map(
-      (endingAt, index) =>
-        `${UPDATE},${endingAt},${latitude},${longitude},${rainfall[index]}`,
+    ...ENDINGS.map((endingAt, index) =>
+      csdiRow(
+        endingAt,
+        rainfall[index],
+        latitude,
+        longitude,
+      ),
     ),
   ].join("\n");
 }
@@ -66,63 +104,27 @@ function expectSnapshot(csv: string) {
 }
 
 describe("香港天文台格點降雨 CSV", () => {
-  it("解析經實際回應抽取的五欄、香港時間及四段半小時資料", () => {
+  it("解析從官方 CSDI ZIP 實際回應抽取的十七欄資料", () => {
     const parsed = expectParsed(FIXTURE);
 
-    expect(parsed.value.updatedAt).toBe("2026-07-30T09:12:00.000Z");
+    expect(parsed.value.updatedAt).toBe("2026-08-11T01:36:00.000Z");
     expect(parsed.value.periodEndAts).toEqual([
-      "2026-07-30T09:42:00.000Z",
-      "2026-07-30T10:12:00.000Z",
-      "2026-07-30T10:42:00.000Z",
-      "2026-07-30T11:12:00.000Z",
+      "2026-08-11T02:06:00.000Z",
+      "2026-08-11T02:36:00.000Z",
+      "2026-08-11T03:06:00.000Z",
+      "2026-08-11T03:36:00.000Z",
     ]);
     expect(parsed.value.cells).toHaveLength(2);
     expect(parsed.value.cells[0].periodValues).toEqual([
-      { status: "valid", value: 0.21 },
-      { status: "valid", value: 0.23 },
-      { status: "valid", value: 0.25 },
-      { status: "valid", value: 0.28 },
+      { status: "valid", value: 0.02 },
+      { status: "valid", value: 0.01 },
+      { status: "valid", value: 0 },
+      { status: "valid", value: 0 },
     ]);
   });
 
-  it("解析 CSDI 壓縮檔內的十七欄官方格式", () => {
-    const rows = FIXTURE.trim()
-      .split("\n")
-      .slice(1)
-      .map((line) => {
-        const [updated, ending, latitude, longitude, rainfall] =
-          line.split(",");
-        return [
-          updated.slice(0, 4),
-          Number(updated.slice(4, 6)),
-          Number(updated.slice(6, 8)),
-          Number(updated.slice(8, 10)),
-          Number(updated.slice(10, 12)),
-          "",
-          "UTC+8",
-          ending.slice(0, 4),
-          Number(ending.slice(4, 6)),
-          Number(ending.slice(6, 8)),
-          Number(ending.slice(8, 10)),
-          Number(ending.slice(10, 12)),
-          "",
-          "UTC+8",
-          latitude,
-          longitude,
-          rainfall,
-        ].join(",");
-      });
-    const parsed = expectParsed(
-      [CSDI_RAINFALL_NOWCAST_HEADER.join(","), ...rows].join("\n"),
-    );
-
-    expect(parsed.value.updatedAt).toBe("2026-07-30T09:12:00.000Z");
-    expect(parsed.value.cells).toHaveLength(2);
-    expect(parsed.value.cells[0].periodValues[0]).toEqual({
-      status: "valid",
-      value: 0.21,
-    });
-
+  it("接受十七個官方欄位的任意順序", () => {
+    const canonical = csvForPoint([0.21, 0.23, 0.25, 0.28]);
     const latestObservedOrder = [
       9, 8, 7, 10, 11, 12, 13, 16, 14, 15, 2, 1, 0, 3, 4, 5, 6,
     ];
@@ -131,12 +133,10 @@ describe("香港天文台格點降雨 CSV", () => {
       return latestObservedOrder.map((index) => fields[index]).join(",");
     };
     const reordered = expectParsed(
-      [
-        reorder(CSDI_RAINFALL_NOWCAST_HEADER.join(",")),
-        ...rows.map(reorder),
-      ].join("\n"),
+      canonical.split("\n").map(reorder).join("\n"),
     );
-    expect(reordered.value).toEqual(parsed.value);
+
+    expect(reordered.value).toEqual(expectParsed(canonical).value);
   });
 
   it("只保留十八區各一個代表格點及全港四段衍生值", () => {
@@ -156,7 +156,7 @@ describe("香港天文台格點降雨 CSV", () => {
     }
     expect(
       snapshot.hongKongWide.periods.map((period) => period.rainfallMm),
-    ).toEqual([0.21, 0.23, 0.25, 0.28]);
+    ).toEqual([0.02, 0.02, 0, 0]);
   });
 
   it("同距格點依緯度、經度升序作決定性選擇", () => {
@@ -164,8 +164,8 @@ describe("香港天文台格點降雨 CSV", () => {
     const lowerLongitude = 114.1679875;
     const higherLongitude = 114.1836125;
     const rows = ENDINGS.flatMap((endingAt) => [
-      `${UPDATE},${endingAt},${latitude},${higherLongitude},2`,
-      `${UPDATE},${endingAt},${latitude},${lowerLongitude},1`,
+      csdiRow(endingAt, 2, latitude, higherLongitude),
+      csdiRow(endingAt, 1, latitude, lowerLongitude),
     ]);
     const snapshot = expectSnapshot([HEADER, ...rows].join("\n"));
 
@@ -175,37 +175,67 @@ describe("香港天文台格點降雨 CSV", () => {
     });
   });
 
-  it("接受 BOM 和欄位首尾空白，但拒絕額外、缺少或重排欄位", () => {
-    const spacedHeader = `\uFEFF${RAINFALL_NOWCAST_HEADER.map(
+  it("接受 BOM 及欄位首尾空白", () => {
+    const spacedHeader = `\uFEFF${CSDI_RAINFALL_NOWCAST_HEADER.map(
       (field) => ` ${field} `,
     ).join(",")}`;
-    expectParsed(
-      csvForPoint([0, 0, 0, 0]).replace(HEADER, spacedHeader),
+    const spacedRows = csvForPoint([0, 0, 0, 0])
+      .split("\n")
+      .slice(1)
+      .map((line) =>
+        line
+          .split(",")
+          .map((field) => ` ${field} `)
+          .join(","),
+      );
+
+    expectParsed([spacedHeader, ...spacedRows].join("\n"));
+  });
+
+  it("拒絕舊五欄、缺欄、額外欄、重複欄及非十七欄資料列", () => {
+    const valid = csvForPoint([0, 0, 0, 0]);
+    const firstRow = valid.split("\n")[1].split(",");
+
+    const legacy = parseRainfallNowcastCsv(
+      `${LEGACY_HEADER}\n${UPDATE},${ENDINGS[0]},22.2764,114.1758,0`,
     );
+    expect(legacy).toMatchObject({
+      ok: false,
+      issues: [{ path: "$.header" }],
+    });
 
     expect(
       parseRainfallNowcastCsv(
-        csvForPoint([0, 0, 0, 0]).replace(HEADER, `${HEADER},Extra`),
+        valid.replace(HEADER, `${HEADER},Extra`),
       ).ok,
     ).toBe(false);
     expect(
       parseRainfallNowcastCsv(
-        csvForPoint([0, 0, 0, 0]).replace(
+        valid.replace(
           HEADER,
-          RAINFALL_NOWCAST_HEADER.slice(0, 4).join(","),
+          CSDI_RAINFALL_NOWCAST_HEADER.slice(0, -1).join(","),
         ),
       ).ok,
     ).toBe(false);
     expect(
       parseRainfallNowcastCsv(
-        csvForPoint([0, 0, 0, 0]).replace(
+        valid.replace(
           HEADER,
           [
-            RAINFALL_NOWCAST_HEADER[1],
-            RAINFALL_NOWCAST_HEADER[0],
-            ...RAINFALL_NOWCAST_HEADER.slice(2),
+            ...CSDI_RAINFALL_NOWCAST_HEADER.slice(0, -1),
+            CSDI_RAINFALL_NOWCAST_HEADER[0],
           ].join(","),
         ),
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseRainfallNowcastCsv(
+        [HEADER, firstRow.slice(0, -1).join(",")].join("\n"),
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseRainfallNowcastCsv(
+        [HEADER, [...firstRow, "Extra"].join(",")].join("\n"),
       ).ok,
     ).toBe(false);
   });
@@ -213,32 +243,41 @@ describe("香港天文台格點降雨 CSV", () => {
   it("把混合更新時間、非法時間或座標及缺少必要時段視為致命", () => {
     const valid = csvForPoint([0, 0, 0, 0]);
 
+    const mixedUpdate = valid.split("\n");
+    mixedUpdate[4] = csdiRow(
+      "202607301924",
+      0,
+      22.2764,
+      114.1758,
+      "202607301724",
+    );
+    expect(parseRainfallNowcastCsv(mixedUpdate.join("\n")).ok).toBe(
+      false,
+    );
     expect(
       parseRainfallNowcastCsv(
-        valid.replace(
-          `${UPDATE},${ENDINGS[3]}`,
-          `202607301724,202607301924`,
-        ),
+        valid.replace("2026,7,30,17,12", "2026,2,30,17,12"),
       ).ok,
     ).toBe(false);
-    expect(
-      parseRainfallNowcastCsv(
-        valid.replace(UPDATE, "202602301712"),
-      ).ok,
-    ).toBe(false);
+    expect(parseRainfallNowcastCsv(valid.replace("UTC+8", "UTC+9")).ok).toBe(
+      false,
+    );
     expect(
       parseRainfallNowcastCsv(valid.replace("22.2764", "north")).ok,
     ).toBe(false);
     expect(
+      parseRainfallNowcastCsv(valid.replace("22.2764", "")).ok,
+    ).toBe(false);
+    expect(
       parseRainfallNowcastCsv(
-        `${valid}\n${UPDATE},202607301942,north,114.1758,0`,
+        `${valid}\n${csdiRow("202607301942", 0, "north")}`,
       ).ok,
     ).toBe(false);
     expect(
       parseRainfallNowcastCsv(
         valid
           .split("\n")
-          .filter((line) => !line.includes(ENDINGS[2]))
+          .filter((_line, index) => index !== 3)
           .join("\n"),
       ).ok,
     ).toBe(false);
@@ -255,16 +294,30 @@ describe("香港天文台格點降雨 CSV", () => {
       ).ok,
     ).toBe(false);
 
+    const nonDecimalSelected = expectParsed(
+      csvForPoint(["0x10", 0, 0, 0]),
+    );
+    expect(
+      buildRainfallNowcastSnapshot(
+        nonDecimalSelected.value,
+        nonDecimalSelected.issues,
+      ).ok,
+    ).toBe(false);
+
     const rows = DISTRICTS.flatMap((district) =>
-      ENDINGS.map(
-        (endingAt) =>
-          `${UPDATE},${endingAt},${district.center.latitude},${district.center.longitude},0`,
+      ENDINGS.map((endingAt) =>
+        csdiRow(
+          endingAt,
+          0,
+          district.center.latitude,
+          district.center.longitude,
+        ),
       ),
     );
     rows.push(
-      `${UPDATE},${ENDINGS[0]},22.35,114.01,not-a-number`,
+      csdiRow(ENDINGS[0], "not-a-number", 22.35, 114.01),
       ...ENDINGS.slice(1).map(
-        (endingAt) => `${UPDATE},${endingAt},22.35,114.01,0`,
+        (endingAt) => csdiRow(endingAt, 0, 22.35, 114.01),
       ),
     );
     const recoverable = expectParsed([HEADER, ...rows].join("\n"));

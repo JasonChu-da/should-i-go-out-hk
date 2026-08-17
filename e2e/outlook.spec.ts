@@ -1016,6 +1016,7 @@ test("生效警告才顯示雙格區，未能確認時改顯示審慎提示", as
   await page.getByRole("button", { name: /香港整體/ }).click();
   await page.getByRole("button", { name: "灣仔" }).click();
   await expect(page.getByText("未能完整確認目前天氣警告")).toBeVisible();
+  await expectNoA11yViolations(page);
 });
 
 test("API 格式錯誤顯示失敗狀態，重試後恢復", async ({ page }) => {
@@ -1077,6 +1078,53 @@ test("主要互動可用鍵盤操作且 focus 樣式可見", async ({ browserNam
   await expect(page.locator(".location-pill")).toHaveAccessibleName(
     /香港整體 跑步／踩單車/,
   );
+});
+
+test("固定 dark theme 在系統明暗偏好下保持可讀、可聚焦且不溢位", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockOutlookApi(page);
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/");
+    await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+    await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(6, 24, 39)",
+    );
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(244, 250, 255)");
+
+    const themeColors = await page
+      .locator('meta[name="theme-color"]')
+      .evaluateAll((elements) =>
+        elements
+          .map((element) => ({
+            content: element.getAttribute("content"),
+            media: element.getAttribute("media"),
+          }))
+          .sort((left, right) => (left.media ?? "").localeCompare(right.media ?? "")),
+      );
+    expect(themeColors).toEqual([
+      { content: "#061827", media: "(prefers-color-scheme: dark)" },
+      { content: "#061827", media: "(prefers-color-scheme: light)" },
+    ]);
+
+    await page.locator(".location-pill").focus();
+    await expect(page.locator(".location-panel")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
+    const dimensions = await page.evaluate(() => ({
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+      viewport: window.innerWidth,
+    }));
+    expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+    expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
+  }
 });
 
 test("prefers-reduced-motion 下停用天氣動態", async ({ page }) => {

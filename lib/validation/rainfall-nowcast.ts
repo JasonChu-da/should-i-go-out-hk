@@ -7,14 +7,6 @@ import {
   type ValidationIssue,
 } from "@/lib/validation/common";
 
-export const RAINFALL_NOWCAST_HEADER = [
-  "Updated Date and Time (in Hong Kong Time)",
-  "Ending Date and Time (in Hong Kong Time)",
-  "Latitude (degree)",
-  "Longitude (degree)",
-  "Half-hourly Nowcast Accumulated Rainfall (mm)",
-] as const;
-
 export const CSDI_RAINFALL_NOWCAST_HEADER = [
   "Updated Date (Year)/更新日期 (年)/更新日期 (年)",
   "Updated Date (Month)/更新日期 (月)/更新日期 (月)",
@@ -37,6 +29,7 @@ export const CSDI_RAINFALL_NOWCAST_HEADER = [
 
 const REQUIRED_OFFSETS_MINUTES = [30, 60, 90, 120] as const;
 const MAX_REPORTED_ISSUES = 10;
+const DECIMAL_NUMBER_PATTERN = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
 
 export type ParsedRainfallValue =
   | { status: "valid"; value: number }
@@ -114,6 +107,12 @@ function isValidCoordinate(
   );
 }
 
+function parseDecimal(raw: string): number | null {
+  if (!DECIMAL_NUMBER_PATTERN.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
 function isInsideServiceBounds(
   latitude: number,
   longitude: number,
@@ -131,14 +130,13 @@ function coordinateKey(latitude: number, longitude: number): string {
 }
 
 /**
- * Incremental parser for the fixed five-column HKO CSV contract.
+ * Incremental parser for the official 17-column CSDI CSV contract.
  * It retains only grid identities inside the app's Hong Kong service bounds.
  */
 export class RainfallNowcastCsvParser {
   dataRowCount = 0;
 
   private headerSeen = false;
-  private format: "legacy" | "csdi" | null = null;
   private csdiFieldIndexes: number[] | null = null;
   private rawUpdatedAt: string | null = null;
   private updatedAt: string | null = null;
@@ -179,27 +177,17 @@ export class RainfallNowcastCsvParser {
         .split(",")
         .map((field) => field.trim());
 
+      const csdiFieldIndexes = CSDI_RAINFALL_NOWCAST_HEADER.map(
+        (expected) => fields.indexOf(expected),
+      );
       if (
-        fields.length !== RAINFALL_NOWCAST_HEADER.length ||
-        !RAINFALL_NOWCAST_HEADER.every(
-          (expected, index) => fields[index] === expected,
-        )
+        fields.length !== CSDI_RAINFALL_NOWCAST_HEADER.length ||
+        new Set(fields).size !== fields.length ||
+        csdiFieldIndexes.some((index) => index < 0)
       ) {
-        const csdiFieldIndexes = CSDI_RAINFALL_NOWCAST_HEADER.map(
-          (expected) => fields.indexOf(expected),
-        );
-        if (
-          fields.length === CSDI_RAINFALL_NOWCAST_HEADER.length &&
-          new Set(fields).size === fields.length &&
-          csdiFieldIndexes.every((index) => index >= 0)
-        ) {
-          this.format = "csdi";
-          this.csdiFieldIndexes = csdiFieldIndexes;
-        } else {
-          this.fatal("$.header", "CSV 標題與官方格式不符");
-        }
+        this.fatal("$.header", "CSV 標題與官方十七欄格式不符");
       } else {
-        this.format = "legacy";
+        this.csdiFieldIndexes = csdiFieldIndexes;
       }
       return;
     }
@@ -207,49 +195,32 @@ export class RainfallNowcastCsvParser {
     if (line.trim() === "") return;
     this.dataRowCount += 1;
     const path = `$.rows[${this.dataRowCount}]`;
-    let fields = line.split(",").map((field) => field.trim());
+    const fields = line.split(",").map((field) => field.trim());
 
-    if (this.format === "csdi") {
-      if (
-        fields.length !== CSDI_RAINFALL_NOWCAST_HEADER.length ||
-        this.csdiFieldIndexes === null
-      ) {
-        this.fatal(path, "CSDI CSV 資料列必須恰好有十七欄");
-        return;
-      }
-      const updatedAt = compactCsdiTimestamp(
-        fields,
-        this.csdiFieldIndexes.slice(0, 7),
-      );
-      const endingAt = compactCsdiTimestamp(
-        fields,
-        this.csdiFieldIndexes.slice(7, 14),
-      );
-      if (!updatedAt || !endingAt) {
-        this.fatal(path, "CSDI 更新或結束時間格式無效");
-        return;
-      }
-      fields = [
-        updatedAt,
-        endingAt,
-        fields[this.csdiFieldIndexes[14]],
-        fields[this.csdiFieldIndexes[15]],
-        fields[this.csdiFieldIndexes[16]],
-      ];
-    }
-
-    if (fields.length !== RAINFALL_NOWCAST_HEADER.length) {
-      this.fatal(path, "CSV 資料列必須恰好有五欄");
+    if (
+      fields.length !== CSDI_RAINFALL_NOWCAST_HEADER.length ||
+      this.csdiFieldIndexes === null
+    ) {
+      this.fatal(path, "CSDI CSV 資料列必須恰好有十七欄");
       return;
     }
 
-    const [
-      rawUpdatedAt,
-      rawEndingAt,
-      rawLatitude,
-      rawLongitude,
-      rawRainfall,
-    ] = fields;
+    const rawUpdatedAt = compactCsdiTimestamp(
+      fields,
+      this.csdiFieldIndexes.slice(0, 7),
+    );
+    const rawEndingAt = compactCsdiTimestamp(
+      fields,
+      this.csdiFieldIndexes.slice(7, 14),
+    );
+    if (!rawUpdatedAt || !rawEndingAt) {
+      this.fatal(path, "CSDI 更新或結束時間格式無效");
+      return;
+    }
+
+    const rawLatitude = fields[this.csdiFieldIndexes[14]];
+    const rawLongitude = fields[this.csdiFieldIndexes[15]];
+    const rawRainfall = fields[this.csdiFieldIndexes[16]];
     const updatedAt = parseCompactHktTimestamp(rawUpdatedAt);
     const endingAt = parseCompactHktTimestamp(rawEndingAt);
 
@@ -268,9 +239,13 @@ export class RainfallNowcastCsvParser {
 
     const offsetMinutes =
       (Date.parse(endingAt) - Date.parse(updatedAt)) / 60_000;
-    const latitude = Number(rawLatitude);
-    const longitude = Number(rawLongitude);
-    if (!isValidCoordinate(latitude, longitude)) {
+    const latitude = parseDecimal(rawLatitude);
+    const longitude = parseDecimal(rawLongitude);
+    if (
+      latitude === null ||
+      longitude === null ||
+      !isValidCoordinate(latitude, longitude)
+    ) {
       this.fatal(path, "經緯度無效，無法判斷格點身分");
       return;
     }
@@ -285,14 +260,12 @@ export class RainfallNowcastCsvParser {
     }
     this.requiredPeriodsSeen[periodIndex] = true;
 
-    const rainfallMm = Number(rawRainfall);
-    const rainfallIsValid =
-      rawRainfall !== "" &&
-      Number.isFinite(rainfallMm) &&
-      rainfallMm >= 0;
+    const rainfallMm = parseDecimal(rawRainfall);
+    const validRainfallMm =
+      rainfallMm !== null && rainfallMm >= 0 ? rainfallMm : null;
 
     if (!isInsideServiceBounds(latitude, longitude)) {
-      if (!rainfallIsValid) {
+      if (validRainfallMm === null) {
         this.recoverable(path, "香港服務範圍外的雨量值無效");
       }
       return;
@@ -310,8 +283,8 @@ export class RainfallNowcastCsvParser {
 
     cell.periodValues[periodIndex] =
       current === undefined
-        ? rainfallIsValid
-          ? { status: "valid", value: rainfallMm }
+        ? validRainfallMm !== null
+          ? { status: "valid", value: validRainfallMm }
           : { status: "invalid" }
         : { status: "duplicate" };
     this.cells.set(key, cell);

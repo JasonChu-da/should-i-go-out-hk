@@ -1,5 +1,15 @@
 # Dependency Security Audit
 
+## 2026-08-14：代碼健康審計重驗
+
+以 Node.js `v24.13.1`、npm `11.8.0` 及目前 lockfile 執行 `npm audit --json`、`npm audit --omit=dev --json` 及 `npm ls --depth=0`；全部 exit 0，完整 483-node dependency metadata 中沒有 info、low、moderate、high 或 critical vulnerability，頂層 dependency tree 沒有 missing 或 extraneous。`package.json` 與 lockfile 未修改。
+
+`npm outdated --json` 按 npm 慣例以 exit 1 列出可更新版本：`@axe-core/playwright` 4.13.0、Next／`eslint-config-next` 16.3.1，以及 `@types/node` 26、ESLint 10、TypeScript 7。這些不是漏洞證據；後三項是 major，全部留待隔離 maintenance change 及完整閘門，不與 AQHI correctness 修正混合。
+
+## 2026-08-12：本輪重驗
+
+以 Node.js `v24.13.1`、npm `11.8.0` 及目前 lockfile 執行 `npm audit --audit-level=high`、`npm audit --omit=dev --audit-level=high`、`npm ls --depth=0`；全部 exit 0，兩種 audit 均為 `found 0 vulnerabilities`，dependency tree 沒有 missing 或 extraneous。終局 lint、typecheck、437／437 tests、coverage、build、54／54 一般 E2E 及 10／10 PWA E2E 亦通過。這是 2026-08-12 的 registry／lockfile 快照，不改寫下方 2026-07-27 原始調查或 2026-08-10 修補紀錄，也不代表未來 advisories 不會改變。
+
 ## 2026-08-10：可部署候選版
 
 本輪由已審查的 `fc20b67` 開始，以 Node.js `v24.13.1`、npm `11.8.0` 重建 dependency tree。修補前結果：

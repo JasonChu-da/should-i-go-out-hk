@@ -1,5 +1,16 @@
 # Content Security Policy Report-Only 盤點
 
+## 2026-08-12：Checkpoint 5 production 重驗
+
+本節是本輪新證據；下方 2026-08-05 內容保留為歷史基準。以最新 production build 在 `127.0.0.1:3301` 啟動唯一 PID 72936，完整 JSON 保存於 task 專屬 `checkpoint-5-csp.json`（76,670 bytes，SHA-256 `BE56CFDF9E7506A6C55EF7EB823022ED6CC38EC7EDFE8A9D3B03211C0FB02157`），完成後只終止該 PID並確認 listener 為 0。
+
+- 首頁、有效／非法 API、manifest、Service Worker、offline page、icon、背景及 production 404 共 9 類 route，另逐一請求 4 個 icon＋42 張背景；全部 route 的 Report-Only policy 與 `next.config.ts` 完全一致，沒有 enforced CSP，46／46 靜態資產均為 200。
+- Chromium／WebKit 實際走首頁、live API、沙田、晾衫模式及動態背景開關；所有 browser 資源都來自同一 origin。實際類型只有 document、script、stylesheet、image、connect、manifest／Service Worker；沒有 font、frame、object、form 或 media。政府 API 仍只由 server fetch，沒有出現在 browser `connect-src`。
+- 兩個 browser 都是 0 個 `securitypolicyviolation`、0 個 page error、0 個 request failure。Chromium 沒有 console 訊息；WebKit 只有 1 個已知 console error，內容明確指出 Report-Only policy 沒有 `report-to`、因此不會執行。離線頁的 1 個 inline style tag 與 1 個 inline script 在兩個 browser 亦均為 0 個 violation；WebKit 同樣只輸出上述提示。
+- 首頁 hydration 後有 16 個 script tag，其中 5 個 inline；有 17 個 style attributes。以本機 response interception 把同一 policy 的兩個 `unsafe-inline` 移除並改成 enforcing（只作假設探針，沒有修改產品）時，Chromium／WebKit 各產生 21 個 enforced violation：5 個 `script-src-elem`、16 個 `style-src-attr`，主畫面均停在 loading。
+
+處置：維持目前 Report-Only policy，不加入 `report-uri`／`report-to` backend，也不放寬任何 source。直接強制目前的寬鬆 inline policy雖可限制部分外部資源，但沒有完成本 checkpoint 要求的 inline 阻礙移除；直接強制移除 inline 的版本則已證實破壞首頁。後續若要 enforcing，應獨立設計可涵蓋 Next hydration、layout／offline script 及 React 動態 style 的 nonce／hash 方案，評估 dynamic rendering／cache 代價，再重跑 production CSP、E2E、PWA 與 build。此次沒有為勾選 checkpoint 引入大範圍 rendering 改造。
+
 日期：2026-08-05
 基準：`origin/main` commit `9dc94fd9f4d8e67beb4bf6851521c70b7d70c944`
 

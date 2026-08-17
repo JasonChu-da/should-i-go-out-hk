@@ -110,7 +110,7 @@ export function buildOutlookFixture(
         { value: 7, display: "7" },
         localized ? `${locationLabel}監測站` : "全港一般監測站最高",
       ),
-      healthRisk: "Moderate",
+      healthRisk: "High",
       source: aqhiSource,
     },
     rainfallNowcast: {

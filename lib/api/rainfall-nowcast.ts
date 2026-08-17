@@ -124,11 +124,9 @@ function cachedSuccess(entry: CacheEntry): RainfallNowcastFetchSuccess {
 }
 
 function isAllowedContentType(contentType: string | null): boolean {
-  if (!contentType) return false;
-  return contentType.split(",").some((part) => {
-    const mediaType = part.split(";", 1)[0]?.trim().toLowerCase();
-    return mediaType ? ALLOWED_CONTENT_TYPES.has(mediaType) : false;
-  });
+  if (!contentType || contentType.includes(",")) return false;
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  return mediaType ? ALLOWED_CONTENT_TYPES.has(mediaType) : false;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -329,8 +327,7 @@ async function requestRainfallNowcast(
       fetchImpl(HKO_RAINFALL_NOWCAST_ENDPOINT, {
         cache: "no-store",
         headers: {
-          Accept:
-            "text/csv, text/plain;q=0.9, application/octet-stream;q=0.8",
+          Accept: "application/zip, application/octet-stream;q=0.9",
         },
         signal: controller.signal,
       }),
@@ -338,8 +335,14 @@ async function requestRainfallNowcast(
     ]);
 
     if (timedOut) return failure("timeout");
-    if (!response.ok) return failure("http");
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      controller.abort();
+      return failure("http");
+    }
     if (!isAllowedContentType(response.headers.get("content-type"))) {
+      void response.body?.cancel().catch(() => undefined);
+      controller.abort();
       return failure("content-type");
     }
 
@@ -348,9 +351,8 @@ async function requestRainfallNowcast(
       Number.isFinite(contentLength) &&
       contentLength > MAX_COMPRESSED_RESPONSE_BYTES
     ) {
-      const cancelPromise = response.body?.cancel();
+      void response.body?.cancel().catch(() => undefined);
       controller.abort();
-      await cancelPromise?.catch(() => undefined);
       return failure("too-large");
     }
 
@@ -366,9 +368,8 @@ async function requestRainfallNowcast(
 
       bytesRead += chunk.value.byteLength;
       if (bytesRead > MAX_COMPRESSED_RESPONSE_BYTES) {
-        const cancelPromise = reader.cancel();
+        void reader.cancel().catch(() => undefined);
         controller.abort();
-        await cancelPromise.catch(() => undefined);
         return failure("too-large");
       }
       chunks.push(chunk.value);

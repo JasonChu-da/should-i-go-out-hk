@@ -233,8 +233,8 @@ Transport 固定限制：
 Timeout 可中止等待 headers 的 fetch 及尚未完成的 body reader；ZIP extraction
 只與 deadline 競速，底層解壓不接收 `AbortSignal`。UTF-8 decode、切行、CSV
 解析及 snapshot 建構屬同步 CPU 工作，不能被 timeout 中途停止。只接受
-
-`application/zip`、`application/octet-stream`；Content-Type
+單一 `application/zip` 或 `application/octet-stream` media type；缺失、
+多值或其他 Content-Type
 
 缺失、`response.body === null`、超限、逾時或非法 UTF-8 均令此附加
 
@@ -244,7 +244,7 @@ Timeout 可中止等待 headers 的 fetch 及尚未完成的 body reader；ZIP e
 
 
 
-時間或座標非法、混合更新時間、找不到四段、所選代表格點必要 period
+時間或座標非法、非有限或非十進位數值、混合更新時間、找不到四段、所選代表格點必要 period
 
 缺少／重複／雨量非法均為致命。座標合法但非任何代表格點的非法雨量、
 

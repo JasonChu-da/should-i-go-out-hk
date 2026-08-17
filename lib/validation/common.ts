@@ -18,8 +18,6 @@ export type ParseFailure = {
 
 export type ParseResult<T> = ParseSuccess<T> | ParseFailure;
 
-export type Parser<T> = (input: unknown) => ParseResult<T>;
-
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

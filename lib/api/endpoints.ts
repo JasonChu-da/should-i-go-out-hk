@@ -25,7 +25,6 @@ export const API_ENDPOINTS = {
 } as const;
 
 export type ApiEndpointName = keyof typeof API_ENDPOINTS;
-export type ApiEndpoint = (typeof API_ENDPOINTS)[ApiEndpointName];
 
 export const API_CACHE_TTL_MS = {
   warnings: 60_000,

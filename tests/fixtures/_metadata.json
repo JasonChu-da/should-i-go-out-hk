@@ -25,9 +25,9 @@
   },
   "gridded-rainfall-nowcast-live-sanitized.csv": {
     "kind": "live-sanitized",
-    "source": "https://data.weather.gov.hk/weatherAPI/hko_data/F3/Gridded_rainfall_nowcast.csv",
-    "retrievedAt": "2026-07-30T17:25:00+08:00",
-    "notes": "保留官方五欄、四段半小時 HKT 時間及兩個實測格點；其餘 58,556 列已移除。"
+    "source": "https://data.weather.gov.hk/weatherAPI/hko_data/csdi/dataset/gridded_rainfall_nowcast.zip",
+    "retrievedAt": "2026-08-11T09:56:59+08:00",
+    "notes": "ZIP 只有單一 gridded_rainfall_nowcast.csv entry；保留實際回應的 17 欄原始順序、兩個不同格點各四個時段及原始公開數值，其餘 3,352 列已移除。"
   },
   "rhrread-daytime-uv.json": {
     "kind": "synthetic",

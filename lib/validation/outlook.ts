@@ -8,6 +8,7 @@ import type {
 import { RAINFALL_NOWCAST_SIGNAL_MM } from "@/lib/domain/outlook";
 import { OUTLOOK_NUMERIC_RANGES } from "@/lib/domain/outlook";
 import { LOCATIONS } from "@/lib/location/districts";
+import { expectedHealthRisk } from "@/lib/validation/aqhi";
 import { isRecord } from "@/lib/validation/common";
 
 const METRIC_STATUSES = new Set([
@@ -113,6 +114,18 @@ const isAqhiValue = (
   Number.isInteger(value.value) &&
   isNumberInRange(value.value, OUTLOOK_NUMERIC_RANGES.aqhi) &&
   value.display === (value.value === 11 ? "10+" : String(value.value));
+
+function hasMatchingAqhiHealthRisk(
+  metric: unknown,
+  healthRisk: unknown,
+): boolean {
+  if (!isRecord(metric)) return false;
+  if (metric.value === null) return healthRisk === null;
+  if (!isRecord(metric.value)) return false;
+
+  const expected = expectedHealthRisk(metric.value.value);
+  return expected !== undefined && healthRisk === expected;
+}
 
 function isRainfallNowcastValue(
   value: unknown,
@@ -292,7 +305,7 @@ export function isOutlookPayload(value: unknown): value is OutlookPayload {
     isSourceMeta(forecast.source) &&
     forecast.source.id === "forecast" &&
     isMetric(aqhi.aqhi, isAqhiValue) &&
-    isNullableString(aqhi.healthRisk) &&
+    hasMatchingAqhiHealthRisk(aqhi.aqhi, aqhi.healthRisk) &&
     isSourceMeta(aqhi.source) &&
     aqhi.source.id === "aqhi" &&
     isMetric(

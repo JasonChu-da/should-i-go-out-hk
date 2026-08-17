@@ -1,8 +1,76 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-08-10
+更新日期：2026-08-17
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
+
+## 2026-08-17：全專案代碼健康審計與技術債治理
+
+### 修改前問題清單
+
+- **P0：沒有發現。** 基線 typecheck、額外 TypeScript unused 檢查及 441／441 unit tests 通過；兩種 `npm audit` 為 0 vulnerabilities。四個官方 JSON endpoint 與 CSDI ZIP 的 2026-08-17 live shape 仍符合現有 transport／parser 契約。
+- **P1：沒有發現尚未受其他邊界控制、且目前可直接觸發的重要 production 故障。** 本輪以下兩項是可重現的 correctness gap，但 live server path 目前另有上游 validation 保護，因此按實際風險列為 P2。
+- **P2：browser payload boundary 沒有延續 AQHI 數值／健康風險固定對照。** 證據：`isOutlookPayload` 只檢查 `healthRisk` 是 nullable string；共用 E2E fixture 的 AQHI 7 配上 `Moderate` 仍被視為完整契約，實際渲染出與數值矛盾的風險文字。最小修復是重用 server AQHI mapping，要求有值時精確配對、無值時必須為 `null`，並修正 fixture。風險只在先前錯誤但被接受的 internal payload 會改進入既有 retry state；live server parser 已輸出相同正確契約。
+- **P2：production warning parser 為測試 provenance 保留 `$` prefix bypass。** 證據：`parseWarnsum` 無條件略過所有 `$` 開頭的動態 warning family；一個結構完整的 `$FUTURE` warning 會無 issue 消失。最小修復是刪除 fixture 內重複的 `$metadata`，讓 provenance 只保留於既有 `_metadata.json`，並刪除 production 特例。風險是其他測試若依賴內嵌 metadata 會失敗；全庫引用及完整測試會驗證，而 live endpoint 當前沒有 `$` key。
+- **P3：沒有發現可再安全刪除的 production symbol、component、type、dependency 或 selector。** `tsc --noUnusedLocals --noUnusedParameters` 通過，runtime dependency 均有 caller；不以大拆 `OutlookApp` 或重排 2,683 行 CSS 製造假乾淨。
+
+### 執行計劃
+
+- [x] 完整追蹤 API、normalization、freshness、scoring、browser route、React state、PWA cache 及主要 UI／E2E call sites
+- [x] 以 2026-08-17 live requests 重驗 HKO weather／warning／forecast、環保署 AQHI 及 CSDI nowcast ZIP
+- [x] 先加入兩項 regression；舊 production 實作的目標測試為 2 failed／35 passed
+- [x] 在兩個既有 trust boundary 作最小根因修復，不改 public API、UI、評分、cache 或 dependency
+- [x] 執行 lint、typecheck、完整 unit、coverage、production build、Chromium／WebKit E2E、production PWA E2E、audit、dependency tree 及 diff check
+- [x] 複核最終 diff 與原有未提交修改邊界，完成保留技術債及驗證報告
+
+### 最終驗證
+
+- `npm run lint -- --no-cache`、`npm run typecheck`、額外 `tsc --noUnusedLocals --noUnusedParameters` 及 `npm run build`：全部通過
+- `npm test`：21 files、442／442 tests 通過；`npm run test:coverage` 同為 442／442，statements 91.54%、branches 85.75%、functions 92.25%、lines 94.35%，全部高於門檻
+- `npm run test:e2e`：Chromium／WebKit 56／56 通過；`npm run test:e2e:pwa`：production Chromium 10／10 通過
+- `npm audit --json`、`npm audit --omit=dev --json`：0 vulnerabilities；`npm ls --depth=0` 完整。`npm outdated --long` 只列可選更新並按 npm 慣例 exit 1，沒有安裝或安全失敗
+- `git diff --check` 通過；E2E 使用的 3100、3200、3201 ports 已釋放。沒有修改 dependency manifest／lockfile、public API、評分、cache、routing、storage 或 UI
+
+### 保留技術債
+
+- **P2：nowcast 尚無有證據的空間覆蓋完整性門檻。** 2026-08-17 live 檔有 840 格點，十八區代表點最近距離約 0.34–1.20 km；單一樣本不足以設定不誤拒官方資料的固定格點數或距離門檻，保留至取得多期樣本後處理。
+- **P2：CSS cascade 與 client orchestration 仍集中。** `app/globals.css` 約 2,683 行；`components/OutlookApp.tsx` 約 629 行。現有責任雖大但 boundary 清楚且有 race／a11y／E2E 保護，現在拆分只會搬動複雜度。
+- **P2：CSP 仍為 Report-Only，CI 沒有 dependency audit gate。** 兩者已有文件化取捨；enforcing CSP 需部署證據，audit gate 則要先定 severity 與 advisory outage policy，並非本輪 parser 契約修正。
+- **P3：非安全性 dependency 更新及正式部署／實機驗收。** `npm outdated` 只列維護或 major upgrade；本機驗證不能取代 Vercel、iPhone Safari、Android Chrome 與真實螢幕閱讀器。
+
+## 2026-08-14：代碼健康審計補充複核（目前未提交工作樹）
+
+### 修改前問題清單
+
+- **P0：沒有發現。** 基線 lint、typecheck、441／441 unit tests、production build、兩種 `npm audit`、dependency tree 及 `git diff --check` 均通過；live 四個 JSON endpoint 與 CSDI ZIP schema 亦符合既有 trust-boundary 契約。
+- **P1：AQHI 數值與健康風險文字可互相矛盾但仍通過 runtime validation。** 證據：`lib/validation/aqhi.ts` 只獨立驗證 `aqhi` 範圍與 `health_risk` allowlist；例如 `aqhi: 10`、`health_risk: "Low"` 會被保留，評分按數值作高風險扣分，但 UI 會顯示「風險低」。環保署官方固定對照為 1–3 Low、4–6 Moderate、7 High、8–10 Very High、10+ Serious。最小修復是在既有單列 parser 邊界拒絕不一致組合並加一項 regression test，不推導或覆寫官方原文。風險是上游真的發出矛盾資料時可用站點會減少；這比向使用者顯示錯誤健康標籤安全，既有逐列隔離會保留其他有效站點。
+- **P3：已確認的零 production caller／零引用殘件。** 全庫符號與 selector 搜尋確認 `getWeatherSceneVisualKey` 只由其 obsolete test 使用；`WeatherSceneTheme.label`、`ACTIVITY_MODES.shortLabel`、`Parser` 及 `ApiEndpoint` 沒有 consumer；`.result-topline`／`.status-chip` 沒有 runtime element，且既有 UI／E2E tests 明確斷言這些舊節點不存在。最小修復是直接刪除宣告、值、obsolete test 與只服務這些 class 的 CSS，不建立替代 abstraction。風險是漏掉字串式或 framework convention 引用；上述符號不是 framework entry，selectors 會由全庫搜尋、lint、typecheck、build 及完整瀏覽器測試覆核。
+
+### 執行計劃
+
+- [x] 先加入一項 AQHI 數值／級別不一致 regression test；舊 parser 的目標結果為 1 failed／22 passed，證實會保留矛盾列
+- [x] 在既有 AQHI 單列 parser 作最小根因修復，不改 normalization、評分門檻或 API schema
+- [x] 刪除已證實的 dead function、dead fields、dead type aliases、obsolete test 及 CSS selectors，再次搜尋引用
+- [x] 執行 lint、typecheck、完整 unit、coverage、production build、Chromium／WebKit E2E、production PWA E2E、兩種 audit、dependency tree、outdated 檢查及 diff check
+- [x] 複核最終 diff 沒有覆蓋原有未提交修改，並記錄保留的 P2／P3 技術債
+
+### 最終驗證
+
+- `npm run lint -- --no-cache`、`npm run typecheck`、額外 `tsc --noUnusedLocals --noUnusedParameters` 及 `npm run build`：全部通過
+- `npm test`：21 files、441／441 tests 通過；刪除一項 obsolete visual-key test 並新增一項 AQHI regression，總數不變
+- `npm run test:coverage`：441／441 tests 通過；statements 91.72%、branches 85.84%、functions 92.23%、lines 94.39%
+- `npm run test:e2e`：Chromium／WebKit 56／56 通過；`npm run test:e2e:pwa`：production Chromium 10／10 通過
+- `npm audit --json`、`npm audit --omit=dev --json`：0 vulnerabilities；`npm ls --depth=0` 完整。`npm outdated --json` 只列出可選維護升級並按 npm 慣例 exit 1，沒有安裝或安全失敗
+- 本機 production smoke：首頁及香港整體 API 為 200、無效地區為 400、五來源均為 `ok`、API 為 `private, no-store`、Report-Only CSP 存在；指定 PID 已停止且 port 3102 已釋放
+- production artifacts 為 16 個 JavaScript 檔共 727,678 bytes、1 個 CSS 檔 42,066 bytes；新增 AQHI server-side 訊息不在 client static chunks。本輪 production source 淨減 29 行且沒有 dependency 變更
+
+### 保留技術債
+
+- **P2：nowcast 沒有明確的空間覆蓋完整性門檻。** `buildRainfallNowcastSnapshot` 會為每區選全檔最近格點，但沒有最大距離；CRC 正確但只含少量完整格點的異常 ZIP 仍可被當作全港預報。2026-08-14 live 檔有 840 格點且未觸發問題；在官方網格邊界／解析度可穩定量化前，不加入任意公里數 magic number。後續應以多次 live 樣本建立保守 coverage invariant，再以縮減但空間完整的 fixture 測試。
+- **P2：CSS cascade 與 client orchestration 仍集中。** 移除本輪兩個零引用 selector 後，`app/globals.css` 仍有 2,683 行；`components/OutlookApp.tsx` 仍有 629 行並同時管理請求、定位、dialog focus 及編排。現有跨瀏覽器／race 測試完整，現在拆檔只會搬動複雜度；待下一次相關 UI 流程需要獨立演進才按實際 seam 拆分。
+- **P2：CSP 仍為 Report-Only，CI 亦沒有 dependency audit gate。** CSP enforcing 需要先在真實部署驗證 nonce／hash；CI 則只在人工審核執行 audit。兩者屬 defense-in-depth／治理工作，不代表目前已發現可利用漏洞；若加入 gate，應以 high severity 為界並接受 advisory 服務可用性風險。
+- **P3：隔離處理非安全性 dependency 更新。** 可更新項目為 `@axe-core/playwright` 4.13.0、Next／`eslint-config-next` 16.3.1，以及 `@types/node` 26、ESLint 10、TypeScript 7；後三者是 major。現時 audit 為零，不與本輪 parser 修正混合。
+- **P3：正式部署與實機仍是外部 checkpoint。** 本機 production、Chromium、WebKit、axe 及 PWA 測試不能取代 Vercel/CDN、iPhone Safari、Android Chrome 與真實螢幕閱讀器驗收。
 
 ## 2026-08-14：代碼健康審計與技術債治理
 
@@ -41,6 +109,30 @@
 - **P2：CSP 尚為 Report-Only。** 現有文件已記錄 `unsafe-inline` 與收集方式；本產品沒有使用者文字輸入或 raw HTML，但 enforced nonce／hash CSP 仍是 defense-in-depth 工作，須在真實部署環境先驗證 report。
 - **P3：可用但非必要的 dependency 更新。** `axe-core` 4.13.0、Next／`eslint-config-next` 16.3.1，以及 ESLint／TypeScript／`@types/node` 的下一個 major 可用；目前兩種 audit 均為零漏洞，因此留給隔離的 dependency maintenance 批次並重跑完整閘門。
 - **P3：真實部署與實機驗收仍屬外部 checkpoint。** 本機 production、Chromium、WebKit 與 PWA 全通過，但 CDN／serverless runtime 及 iPhone／Android 實機行為仍需在部署後驗證。
+
+## 2026-08-12：長期目標七個 checkpoint
+
+- [x] Checkpoint 1：保存原始 diff，重驗 CSDI 17 欄 live ZIP，完成整條 nowcast release review，修正十進位／Content-Type／stream cleanup 根因並加入最小回歸測試
+- [x] Checkpoint 2：初輪 lint、typecheck、437／437 coverage tests、build、52／52 Chromium／WebKit E2E、10／10 production PWA E2E、兩種 audit、dependency tree 及 diff check 全部通過；終局一般 E2E 增至 54／54 後仍全過
+- [x] Checkpoint 3：最新本機 production build 完成首頁／PWA／靜態資源、19 個位置、五來源 live metadata、降級計分及安全 header smoke；證據與臨時 PID lifecycle 已保存
+- [x] Checkpoint 4：README、API sources／observations、decisions、acceptance criteria、QA、dependency audit 與本計劃按實作及本輪證據同步；歷史五欄／舊 cache 結果保留並標明已取代
+- [x] Checkpoint 5：完成 production CSP 資源矩陣、Chromium／WebKit console 與 `securitypolicyviolation` 證據；嚴格 enforcing 探針證實會阻擋 hydration／style，故有證據地保留 Report-Only且不設 reporting backend
+- [ ] Checkpoint 6：核對已授權 Vercel 帳戶／team／project；完成 preview、production、`hkg1` 及正式 HTTPS smoke，否則保持外部受阻
+- [ ] Checkpoint 7：可自動化 Chromium／WebKit、axe、人工鍵盤、dark mode、reduced-motion 及 overflow 驗收已通過；Android Chrome 與 iPhone Safari 實機外部受阻，仍須真實裝置證據
+
+每個 checkpoint 的時間、指令、數量、live 回應及限制以 `docs/LONG_TERM_GOAL.md` 的進度紀錄為準；歷史段落只代表其明示日期，不可當成本輪通過證據。
+
+## 2026-08-11：Nowcast CSDI 17 欄單向切換
+
+- [x] 唯讀重驗官方 CSDI endpoint 為 HTTP 200、`application/zip`、單一 `gridded_rainfall_nowcast.csv` entry，以及 17 個唯一官方欄名
+- [x] 刪除 production parser 的舊五欄 export、`legacy` 狀態及正向相容分支；只接受恰好 17 個唯一官方欄名，欄位順序可變且資料列必須恰好 17 欄
+- [x] 保留 BOM／空白、UTC+8、四個連續時段、數值、座標、issue 上限、snapshot、freshness、cache、評分、payload 與 UI 規則
+- [x] 把上游 `Accept` 收窄為 `application/zip, application/octet-stream;q=0.9`，response Content-Type allowlist 不變
+- [x] 以 2026-08-11 實際 CSDI ZIP 回應重建 sanitized fixture，保留原始 17 欄順序、兩個格點各四個時段及實測公開數值；更新 provenance 與刪減方式
+- [x] Parser 邊界案例全部改用 test-local CSDI row builder，舊五欄只保留為明確拒絕測試；aggregate sample 直接建立與固定 `NOW` 對齊的四段 CSDI 資料
+- [x] 更新 README、D-034、API observations 與本 checklist；沒有新增 dependency、feature flag、fallback 或 migration mode
+- [x] 依序通過目標 Vitest（3 files、50／50）、`npm run lint -- --no-cache`、`npm run typecheck`、完整 Vitest（21 files、433／433）、coverage（statements 91.49%、branches 85.28%、functions 93.77%、lines 94.03%）、production build、一般 E2E（52／52）、PWA E2E（10／10）及 `git diff --check`
+- [x] 一般 E2E 首輪 44／52 全部通過後被 180 秒外層 command timeout 中止，以 420 秒上限完整重跑 52／52 通過；PWA 首輪最後一項 navigation retry 暫時逾時，該項單獨 1／1 及其後完整 10／10 均通過，沒有為偶發測試基礎設施競態修改產品或 PWA 程式
 
 ## 2026-08-10：可部署候選版
 
@@ -322,7 +414,7 @@
 
 - [x] 重現 2.7 MB CSV 在 8 秒 deadline 長期逾時，量度 60 秒只取得約 475 KB
 - [x] 驗證同一官方 CSDI dataset 的 16 KB ZIP 及十七欄、四時段資料契約
-- [x] 以 Node 內建 zlib 替換 transport，保留壓縮／解壓／列數／deadline 邊界
+- [x] 以 `yauzl` 讀取及解壓官方 ZIP，並保留壓縮／解壓／CRC／列數／deadline 邊界
 - [x] 補齊 ZIP、CSDI CSV、cache、損壞及超限回歸測試
 - [x] 執行真實本機 route、UI、lint、typecheck、test、build 及最終 diff review
 

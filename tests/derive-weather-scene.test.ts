@@ -9,7 +9,6 @@ import type {
 } from "@/lib/domain/outlook";
 import {
   deriveWeatherScene,
-  getWeatherSceneVisualKey,
   type WeatherSceneData,
 } from "@/lib/weather-scene/derive-weather-scene";
 
@@ -432,16 +431,6 @@ describe("deriveWeatherScene", () => {
         }),
       ),
     ).toMatchObject({ scene: "neutral", animationEnabled: false });
-  });
-
-  it("相同 visual scene 的資料更新不改變動畫 key", () => {
-    const first = deriveWeatherScene(sceneData({ rainfall: 0.8 }));
-    const refreshed = deriveWeatherScene(sceneData({ rainfall: 1.9 }));
-
-    expect(first.reason).not.toBe(refreshed.reason);
-    expect(getWeatherSceneVisualKey(first)).toBe(
-      getWeatherSceneVisualKey(refreshed),
-    );
   });
 
   it("每個非 neutral 場景都提供可解釋原因", () => {

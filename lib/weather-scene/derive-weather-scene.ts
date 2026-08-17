@@ -169,16 +169,6 @@ function hasUnknownActiveWarning(warnings: readonly NormalizedWarning[]): boolea
   });
 }
 
-export function getWeatherSceneVisualKey(scene: WeatherSceneResult): string {
-  return [
-    scene.scene,
-    scene.period,
-    scene.precipitation,
-    scene.severity,
-    scene.animationEnabled ? "motion" : "static",
-  ].join(":");
-}
-
 /**
  * Pure, deterministic scene derivation. It only consumes normalized,
  * freshness-labelled government observations and the payload generation time.

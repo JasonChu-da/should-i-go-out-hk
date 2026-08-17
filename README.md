@@ -124,13 +124,13 @@ Repository 以 `.gitattributes` 的 `* text=auto eol=lf` 統一新加入或重�
 
 ## Vercel Hobby 免費部署
 
-本專案含動態 `/api/outlook` server route，不能部署成純靜態網站。Vercel 會把該 Route Handler 自動建置成 Node.js Function；不需要 `vercel.json`、資料庫、付費整合、環境變數或 API key。
+本專案含動態 `/api/outlook` server route，不能部署成純靜態網站。Vercel 會把該 Route Handler 自動建置成 Node.js Function；不需要資料庫、付費整合、環境變數或 API key。Function region 可在已確認帳戶／專案後由 Dashboard 或 CLI 設定，無須為未知專案預先加入 `vercel.json`。
 
 ### 使用免費方案前先確認
 
 - Vercel Hobby 是免費方案，但只適用於個人、非商業用途；限制及免費額度可能改變，部署前請查看 [Hobby 方案](https://vercel.com/docs/plans)、[Fair Use Guidelines](https://vercel.com/docs/limits/fair-use-guidelines) 及 [Usage](https://vercel.com/docs/pricing/manage-and-optimize-usage)。
-- Vercel 網站以 Git repository 匯入專案。先把專案放到 Vercel 支援的 Git provider，例如 GitHub、GitLab 或 Bitbucket；本步驟不需要把 repository 設為公開。
-- Vercel Hobby 可能拒絕作者不是該 Hobby 帳戶擁有者的 Git deployment。準備上傳前，請確保最新 commit 使用 Git provider 能識別的姓名及已驗證電郵／noreply 電郵，不要以 `Local Developer <local-developer@localhost>` 作為準備部署的最新 commit 作者。詳見 [Vercel Git deployments](https://vercel.com/docs/git)。
+- 可選 Git integration 或從專案根目錄以 Vercel CLI 直接部署；CLI 路徑不要求先 commit 或 push。若選 Git integration，repository 可保持 private，並只授權所需 repository。
+- Git deployment 的作者／team 成員限制依帳戶方案與 scope 而異；使用前應核對目前 [Vercel Git deployments](https://vercel.com/docs/git)，不要把歷史 commit 作者假設成通用阻塞條件。
 - 先在本機執行以下部署前檢查，全部通過才上傳：
 
 ```bash
@@ -141,7 +141,11 @@ npm test
 npm run build
 ```
 
-### 在 Vercel 網站建立專案
+### 建立或連結 Vercel 專案
+
+在部署前必須先確認 `vercel whoami` 顯示的帳戶、team scope、專案名稱及本機根目錄 `D:\should-i-go-out-hk` 完全一致。若使用 CLI，`vercel link` 會在被 gitignore 的 `.vercel/` 保存 project／org id；先部署 preview（`vercel deploy`），驗收通過後才部署 production（`vercel deploy --prod`）。官方 CLI 流程見 [Deploying a project from the CLI](https://vercel.com/docs/projects/deploy-from-cli)。
+
+若改用 Vercel 網站及 Git integration：
 
 1. 登入 [Vercel](https://vercel.com/)，並在 team switcher 選擇你的個人 Hobby 帳戶。
 2. 在 Dashboard 右上角按 **New Project**（部分介面顯示 **Add New… → Project**）。
@@ -159,7 +163,7 @@ npm run build
 
 ### 部署後設定與驗證
 
-1. 首次部署完成後，進入 **Project → Settings → Functions → Function Regions**，把唯一 Function region 選為香港 `hkg1`，按 **Save**。Hobby 可選一個 region；把 Function 放近香港政府資料來源可減少網絡延遲。設定後到 **Deployments** 對最新 deployment 按 **Redeploy**，讓新 region 生效。
+1. 新專案的 Function 預設 region 是 `iad1`；進入 **Project → Settings → Functions → Function Regions**，把預設 region 改為香港 `hkg1`。Hobby 只使用單一 region；把 Function 放近香港政府資料來源可減少網絡延遲。設定後重新部署並以 deployment 資源／runtime 證據確認實際 region，而不是只把設定畫面當成生效證據。詳見 [Vercel Function regions](https://vercel.com/docs/functions/configuring-functions/region)。
 2. Node.js 可保留 Vercel 預設的最新 LTS。專案要求 Node.js 20.9 或以上，而 Vercel 目前支援 20.x、22.x 及 24.x；如需手動選擇，可在 **Settings → Build and Deployment → Node.js Version** 選擇 24.x。詳見 [Supported Node.js versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)。
 3. 按 deployment 的 **Visit** 開啟正式網址，確認首頁能顯示繁體中文介面，並能在合理時間內由載入狀態轉成結果或可重試錯誤。
 4. 直接開啟 `https://你的網域/api/outlook?location=hong-kong`，確認收到 JSON，而不是 404、HTML 錯誤頁或永久載入。
@@ -172,8 +176,8 @@ npm run build
 - `/api/outlook` 是 `force-dynamic`，回應帶有 `private, no-store`，所以瀏覽器及 Vercel CDN 不會保存整份 route 回應。
 - PWA service worker 對所有 `/api/` 採 network-only，前端 fetch 亦保持 `cache: "no-store"`；PWA 靜態 cache 不改變 server-side freshness 或 API failure semantics。
 - 五個政府來源並行請求，每個來源有獨立 8 秒 deadline；單一來源失敗不會阻塞其他成功來源。降雨請求逾時時，`AbortController` 可中止仍在等待 response headers 的 fetch，並取消尚未完成的 response body reader；ZIP extraction 會與 deadline 競速，但底層解壓不接收 `AbortSignal`。UTF-8 decode、切分文字、CSV parsing 及 snapshot 建構是同步 CPU 工作，不能被 timeout 中途停止；因此 8 秒不是這些步驟的可搶佔執行上限。瀏覽器另有 12 秒內部 route deadline，避免永久停留在 loading。
-- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 ZIP 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存原始檔案。
-- 降雨 transport 使用官方約 16 KB ZIP，壓縮資料最多讀取 512 KiB，ZIP 宣告及實際解壓輸出均不得超過 5 MiB，CSV 最多處理 100,000 筆資料列；這些上限限制即使 timeout 無法搶佔同步 CPU 工作時的最壞輸入及處理成本。下載期間超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
+- 成功的上游 JSON 會在同一個 Function instance 記憶體內短暫快取：警告 1 分鐘、即時天氣 5 分鐘、本港預報 10 分鐘、AQHI 15 分鐘。同 URL 的同時請求會合併。降雨 ZIP 每 10 分鐘嘗試更新，cache 只保存十八區共 72 個半小時值及四個全港衍生值，不保存原始檔案；更新失敗只可沿用仍未超過來源 24 分鐘 hard expiry 的已驗證 snapshot，過期值一律不計分。
+- 降雨 transport 使用官方約 16 KB ZIP，壓縮資料最多讀取 512 KiB，ZIP 宣告及實際解壓輸出均不得超過 5 MiB，CSV 最多處理 100,000 筆資料列；runtime 只接受 ZIP 內恰好包含 17 個唯一官方欄名的 CSDI CSV，欄位可任意排序，舊五欄 CSV、缺欄、額外欄或重複欄都會拒絕。這些上限限制即使 timeout 無法搶佔同步 CPU 工作時的最壞輸入及處理成本。下載期間超限會取消 reader 及 request。每次 `/api/outlook` 回應只向瀏覽器傳送所選地區或香港整體的四段精簡結果。
 - HTTP、網絡、timeout、Content-Type 或 JSON 解碼失敗不會寫入快取。若上游回傳可解碼但 schema malformed 的 JSON，該原始回應可能保留至短期 TTL 屆滿；runtime validation 仍會把相關來源標為不可用，絕不把 malformed 值納入計分。
 - 記憶體 cache 不會跨 cold start、重新部署或不同 Function instance 共享，因此只能減少部分重複請求，不能視作可靠的持久 cache。這符合 MVP「無資料庫」限制。
 - 新 Vercel 專案預設啟用 Fluid compute；Hobby 的預設 Function duration 足以涵蓋應用本身的 8 秒上游 timeout，毋須額外提高 duration 或購買付費方案。最新上限仍應以 [Vercel Function duration](https://vercel.com/docs/functions/configuring-functions/duration) 為準。
@@ -186,7 +190,7 @@ npm run build
 - 精確 latitude／longitude 只在瀏覽器目前頁面的記憶體中使用，立即轉成 district id；server 只收到 canonical id。
 - 手動地區選擇只保留在 React state，不寫入 localStorage／sessionStorage。
 - Runtime 沒有使用 sessionStorage；localStorage 讀寫在受限儲存模式下失敗時會被安全忽略。
-- 所有政府 API 都由 `/api/outlook` server route 存取；失敗結果不會快取。
+- 所有政府 API 都由 `/api/outlook` server route 存取；網絡、HTTP、格式解碼等 transport failure 不會快取。可解碼但 schema malformed 的 JSON 可能保留至短 TTL 屆滿，但每次仍經 runtime validation 排除，不會進入計分。
 
 實際程式碼使用的版本化 localStorage key：
 

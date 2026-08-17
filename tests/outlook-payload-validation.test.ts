@@ -93,11 +93,16 @@ describe("browser outlook payload boundary", () => {
     },
   );
 
-  it("accepts only the official normalized AQHI range and display", () => {
-    const withAqhi = (value: unknown, display: string) => ({
+  it("accepts only a consistent official AQHI value, display and risk", () => {
+    const withAqhi = (
+      value: unknown,
+      display: string,
+      healthRisk: unknown = payload.aqhi.healthRisk,
+    ) => ({
       ...payload,
       aqhi: {
         ...payload.aqhi,
+        healthRisk,
         aqhi: {
           ...payload.aqhi.aqhi,
           value: { value, display },
@@ -105,8 +110,10 @@ describe("browser outlook payload boundary", () => {
       },
     });
 
-    expect(isOutlookPayload(withAqhi(1, "1"))).toBe(true);
-    expect(isOutlookPayload(withAqhi(11, "10+"))).toBe(true);
+    expect(isOutlookPayload(withAqhi(1, "1", "Low"))).toBe(true);
+    expect(isOutlookPayload(withAqhi(11, "10+", "Serious"))).toBe(true);
+    expect(isOutlookPayload(withAqhi(7, "7", "Moderate"))).toBe(false);
+    expect(isOutlookPayload(withAqhi(7, "7", "Unknown"))).toBe(false);
     expect(isOutlookPayload(withAqhi(0, "0"))).toBe(false);
     expect(isOutlookPayload(withAqhi(12, "12"))).toBe(false);
     expect(isOutlookPayload(withAqhi(Number.NaN, "NaN"))).toBe(false);
@@ -119,10 +126,20 @@ describe("browser outlook payload boundary", () => {
         ...payload,
         aqhi: {
           ...payload.aqhi,
+          healthRisk: null,
           aqhi: { ...payload.aqhi.aqhi, status: "missing", value: null },
         },
       }),
     ).toBe(true);
+    expect(
+      isOutlookPayload({
+        ...payload,
+        aqhi: {
+          ...payload.aqhi,
+          aqhi: { ...payload.aqhi.aqhi, status: "missing", value: null },
+        },
+      }),
+    ).toBe(false);
   });
 
   it("requires each of the five unique official sources exactly once", () => {

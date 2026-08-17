@@ -4,6 +4,8 @@
 
 降雨臨近預報重驗：2026-07-30 17:25 HKT
 
+CSDI ZIP 重驗：2026-08-12 19:42:59 HKT
+
 本文件記錄實際 HTTP GET，而非只依文件推測。官方規格仍以 [HKO Open Data API 文件](https://www.hko.gov.hk/tc/weatherAPI/doc/files/HKO_Open_Data_API_Documentation_tc.pdf) 與 [AQHI dataset](https://data.gov.hk/en-data/dataset/hk-dpo-datagovhk2-city-dashboard-aqhi) 為準。
 
 ## 總覽
@@ -14,7 +16,7 @@
 | HKO `warnsum` | 200 | `application/json; charset=utf-8` | 動態鍵 object | 每項警告各有時間，無全域時間 |
 | HKO `flw` | 200 | `application/json; charset=utf-8` | object | `updateTime` |
 | AQHI individual | 200 | `application/json; charset=utf-8` | 18-item array | 每項 `publish_date` |
-| HKO gridded rainfall nowcast | 200 | CSV | 五欄、58,564 筆資料列 | 每列 `Updated Date and Time` |
+| HKO gridded rainfall nowcast | 200 | `application/zip` | 單一 CSV entry、17 欄、3,360 筆資料列 | 每列分欄的 `Updated Date／Time` |
 
 HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI 回應有 `Cache-Control: no-cache`。應用會另記 `retrievedAt` 並自管短期 server cache。
 
@@ -79,6 +81,7 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 - 本次 AQHI 為 2–3，風險均為 `Low`。
 - 官方 data dictionary 把 `aqhi` 定義為 string 並容許 `1`–`10`、`10+`；runtime parser 必須同時接受實測 number、numeric string 與 `10+`。
 - `health_risk` 的官方語義級別為 `Low`、`Moderate`、`High`、`Very High`、`Serious`；2026-07-27 重驗官方端點時取得的回應樣本（`publish_date` 為 2026-07-25）在 AQHI 8–9 實際使用 `Very high`。Parser 因此只對這組有限級別作不分大小寫比對，並正規化成一致的 title case；未知字眼仍會排除該列。
+- 官方固定配對為 1–3 Low、4–6 Moderate、7 High、8–10 Very High、10+ Serious。兩個欄位各自合法但配對矛盾的列同樣視為 malformed 並逐列排除，不自行改寫上游健康風險文字。
 - `publish_date=2026-07-14T19:30:00`，沒有 offset；必須明確按 HKT `+08:00` 解析。
 - 不可要求恆定 18 項，個別站點可能缺失。
 
@@ -92,7 +95,11 @@ HKO 三個回應實測沒有 `Cache-Control`、`ETag`、`Last-Modified`；AQHI �
 
 實測 ZIP 為 16,161 bytes、約 3.4 秒下載，內含單一 216,141 bytes 的 `gridded_rainfall_nowcast.csv`。內容有 3,360 列，即 (840 \times 4) 個香港格點／時段；日期、時間、時區、經緯度及半小時累計雨量分為十七欄。13:12 snapshot 以更新時間欄起首，13:48 snapshot 則以結束時間欄起首，證實欄位順序不穩定；runtime 因此驗證精確欄名集合後按名稱映射。另分別限制壓縮後 512 KiB、解壓後 5 MiB、100,000 列及完整 8 秒 deadline。
 
-## 歷史五欄 CSV 與 fixture
+2026-08-11 再次唯讀重驗為 HTTP 200、`Content-Type: application/zip`、12,055 bytes，只有單一 217,797 bytes 的 `gridded_rainfall_nowcast.csv`；header 為 17 個唯一官方欄名，順序再次以結束時間欄起首。現行 `gridded-rainfall-nowcast-live-sanitized.csv` 直接保留該回應的 header 原始順序、兩個不同格點各四個時段及原始公開雨量，其餘 3,352 列移除；自動測試不呼叫 live endpoint。Runtime 只接受此 17 欄契約，舊五欄格式不再是合法輸入。
+
+2026-08-12 19:42:59 HKT 本輪又取得 HTTP 200、`application/zip`、11,939 bytes；ZIP 只有同名 CSV，壓縮／解壓大小 11,733／222,837 bytes，CRC-32 `1936211052`。CSV 有 17 個唯一欄名、3,360 列及單一更新時間 `202608121924`，更新與結束時區均為 `UTC+8`，四段結束於 19:54、20:24、20:54、21:24。經緯度與雨量仍為標準十進位。這次只作 live 契約重驗，沒有覆寫 2026-08-11 的 sanitized fixture；fixture provenance 仍指向它實際抽取的 snapshot。
+
+## 歷史五欄 CSV 與已退役 fixture
 
 舊 endpoint：
 
@@ -115,7 +122,7 @@ Updated Date and Time (in Hong Kong Time),Ending Date and Time (in Hong Kong Tim
 
 該次 snapshot 的更新時間為 `202607301712`，四個唯一結束時間為 `202607301742`、`202607301812`、`202607301842`、`202607301912`。因此原始區間是 17:12–17:42、17:42–18:12、18:12–18:42、18:42–19:12，而不是以本站 17:25 擷取時間重新起算。擷取時仍有約 107 分鐘覆蓋；UI 不可承諾完整「未來兩小時」。
 
-保存的 `gridded-rainfall-nowcast-live-sanitized.csv` 由該實際回應抽取兩個格點、四個時段，共八列；其餘 58,556 列移除。Fixture 保留官方 header、時間格式、座標精度及實際雨量值，自動測試不呼叫 live endpoint。
+舊版 `gridded-rainfall-nowcast-live-sanitized.csv` 曾由該實際回應抽取兩個格點、四個時段，共八列；其餘 58,556 列移除。這份五欄 fixture 已於 2026-08-11 退役並由上節的 CSDI ZIP fixture 取代；舊 endpoint 只保留作歷史觀察，不再是 runtime 或正向自動測試契約。
 
 [天文台產品說明](https://www.hko.gov.hk/en/wxinfo/ts/explain.htm) 指產品水平解像度約 2 公里，並提醒雨區可快速發展、減弱或改變方向／速度，格點亦不解析格內分布。該說明頁的地圖產品會顯示 16 幅以 6 分鐘步進的分布圖；本 CSV 的實際契約則只有四段半小時雨量，兩者不可混用。
 
@@ -124,7 +131,7 @@ Updated Date and Time (in Hong Kong Time),Ending Date and Time (in Hong Kong Tim
 ## 實作與 fixture 結論
 
 - 先檢查 2xx 與 JSON Content-Type，再解析 body。
-- Parser 接受未知欄位，排除 malformed item，保留 issues；根結構錯誤才令來源失敗。
+- JSON parser 接受未知欄位，排除 malformed item，保留 issues；根結構錯誤才令來源失敗。Nowcast CSV 則只接受恰好 17 個唯一官方欄名及 17 欄資料列。
 - 保留 raw timestamp，另記 `retrievedAt`。
 - 使用分項觀測時間判斷 weather freshness；無法解析、過時或明顯未來值不計分。
 - Fixtures 會保留本次實測的夜間 UV 空字串、雨量 `min` 缺失、AQHI number、警告動態鍵與預報空白 optionals；另外建立可控的 daytime UV、severe warning、stale、missing、malformed 測試資料。

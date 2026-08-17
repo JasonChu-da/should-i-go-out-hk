@@ -1,3 +1,5 @@
+import { crc32, deflateRawSync } from "node:zlib";
+
 import {
   afterEach,
   beforeEach,
@@ -11,10 +13,12 @@ import {
   clearRainfallNowcastCache,
   fetchRainfallNowcast,
   MAX_COMPRESSED_RESPONSE_BYTES,
+  MAX_DATA_ROWS,
   MAX_RESPONSE_BYTES,
   RAINFALL_NOWCAST_ERROR_MESSAGES,
 } from "@/lib/api/rainfall-nowcast";
 import type { FetchImplementation } from "@/lib/api/client";
+import { CSDI_RAINFALL_NOWCAST_HEADER } from "@/lib/validation/rainfall-nowcast";
 
 const TEST_NOW = Date.parse("2026-07-30T09:20:00.000Z");
 const ZIP_FIXTURE = Uint8Array.from(
@@ -28,6 +32,53 @@ const ZIP_FIXTURE = Uint8Array.from(
 const ZIP_ENTRY_NAME = "gridded_rainfall_nowcast.csv";
 const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+
+function zipCsv(csv: string): Uint8Array<ArrayBuffer> {
+  const name = Buffer.from(ZIP_ENTRY_NAME, "utf8");
+  const data = Buffer.from(csv, "utf8");
+  const compressed = deflateRawSync(data);
+  const checksum = crc32(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(checksum, 14);
+  local.writeUInt32LE(compressed.byteLength, 18);
+  local.writeUInt32LE(data.byteLength, 22);
+  local.writeUInt16LE(name.byteLength, 26);
+
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(ZIP_CENTRAL_FILE_SIGNATURE, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(checksum, 16);
+  central.writeUInt32LE(compressed.byteLength, 20);
+  central.writeUInt32LE(data.byteLength, 24);
+  central.writeUInt16LE(name.byteLength, 28);
+
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE, 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(central.byteLength + name.byteLength, 12);
+  eocd.writeUInt32LE(
+    local.byteLength + name.byteLength + compressed.byteLength,
+    16,
+  );
+
+  const bytes = Buffer.concat([
+    local,
+    name,
+    compressed,
+    central,
+    name,
+    eocd,
+  ]);
+  const zip = new Uint8Array(bytes.byteLength);
+  zip.set(bytes);
+  return zip;
+}
 
 function zipOffsets(zip: Uint8Array) {
   const view = new DataView(
@@ -200,6 +251,9 @@ describe("fetchRainfallNowcast", () => {
         expect.stringContaining("gridded_rainfall_nowcast.zip"),
         expect.objectContaining({
           cache: "no-store",
+          headers: {
+            Accept: "application/zip, application/octet-stream;q=0.9",
+          },
           signal: expect.any(AbortSignal),
         }),
       );
@@ -317,6 +371,11 @@ describe("fetchRainfallNowcast", () => {
       fetchImpl: async () => zipResponse(ZIP_FIXTURE, "text/html"),
       ttlMs: 0,
     });
+    const ambiguousType = await fetchRainfallNowcast({
+      fetchImpl: async () =>
+        zipResponse(ZIP_FIXTURE, "application/zip, text/html"),
+      ttlMs: 0,
+    });
     const nullBody = await fetchRainfallNowcast({
       fetchImpl: async () => zipResponse(null),
       ttlMs: 0,
@@ -330,6 +389,7 @@ describe("fetchRainfallNowcast", () => {
       },
     });
     expect(unknownType).toEqual(missingType);
+    expect(ambiguousType).toEqual(missingType);
     expect(nullBody).toEqual({
       ok: false,
       error: {
@@ -337,6 +397,61 @@ describe("fetchRainfallNowcast", () => {
         message: RAINFALL_NOWCAST_ERROR_MESSAGES.body,
       },
     });
+  });
+
+  it.each([
+    ["HTTP 錯誤", 503, "application/zip", "http"],
+    ["錯誤 Content-Type", 200, "text/html", "content-type"],
+  ] as const)("%s 時取消 response body 並中止 request", async (
+    _case,
+    status,
+    contentType,
+    errorType,
+  ) => {
+    const cancel = vi.fn();
+    let signal: AbortSignal | undefined;
+    const stream = new ReadableStream<Uint8Array>({ cancel });
+    const result = await fetchRainfallNowcast({
+      fetchImpl: async (_input, init) => {
+        signal = init?.signal ?? undefined;
+        return new Response(stream, {
+          status,
+          headers: { "Content-Type": contentType },
+        });
+      },
+      ttlMs: 0,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: errorType,
+        message: RAINFALL_NOWCAST_ERROR_MESSAGES[errorType],
+      },
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("拒絕回應時不等待卡住的 body cleanup", async () => {
+    let signal: AbortSignal | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      cancel: () => new Promise<void>(() => undefined),
+    });
+
+    await expect(
+      fetchRainfallNowcast({
+        fetchImpl: async (_input, init) => {
+          signal = init?.signal ?? undefined;
+          return zipResponse(stream, "text/html");
+        },
+        ttlMs: 0,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { type: "content-type" },
+    });
+    expect(signal?.aborted).toBe(true);
   });
 
   it("壓縮內容超過 512 KiB 時立即 cancel 及 abort", async () => {
@@ -441,6 +556,28 @@ describe("fetchRainfallNowcast", () => {
     });
 
     expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "too-large",
+        message: RAINFALL_NOWCAST_ERROR_MESSAGES["too-large"],
+      },
+    });
+  });
+
+  it("解壓後未超限時仍拒絕超過 100,000 筆資料列", async () => {
+    const header = CSDI_RAINFALL_NOWCAST_HEADER.join(",");
+    const row = "2026,1,1,0,0,,UTC+8,2026,1,1,0,30,,UTC+8,0,0,0";
+    const csv = `${header}\n${Array(MAX_DATA_ROWS + 1).fill(row).join("\n")}`;
+    const zip = zipCsv(csv);
+
+    expect(Buffer.byteLength(csv)).toBeLessThan(MAX_RESPONSE_BYTES);
+    expect(zip.byteLength).toBeLessThan(MAX_COMPRESSED_RESPONSE_BYTES);
+    await expect(
+      fetchRainfallNowcast({
+        fetchImpl: async () => zipResponse(zip),
+        ttlMs: 0,
+      }),
+    ).resolves.toEqual({
       ok: false,
       error: {
         type: "too-large",

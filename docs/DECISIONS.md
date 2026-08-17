@@ -1,6 +1,6 @@
 # 技術決策紀錄
 
-更新日期：2026-07-30
+更新日期：2026-08-17
 
 ## D-001：使用單一聚合 server route
 
@@ -166,7 +166,9 @@ CI 不另行執行 `npm test`，因 `npm run test:coverage` 已用相同 Vitest 
 
 理由：單一 job 避免多次 `npm ci` 與 Chromium 安裝，並確保 E2E 只在較便宜的靜態、型別、單元及 build 閘門通過後執行。Node.js 24.x 是目前 LTS，符合 `package.json` 所列 `>=20.9.0`，亦與本機驗證環境及 `@types/node` 24 對齊；不採用已於 2026-03-24 EOL 的 Node.js 20。
 
-## D-025：降雨臨近預報以來源時間、十八區代表格點及精簡 snapshot 為契約
+## D-025：降雨臨近預報以來源時間、十八區代表格點及精簡 snapshot 為契約（歷史）
+
+此節保留 2026-07-30 首版五欄 CSV 決策；cache failure 行為已由 D-033 取代，transport／parser 契約已由 D-034 取代。來源時間、四段區間、代表格點、香港整體聚合及精簡 snapshot 語義仍有效。
 
 官方 CSV 的四段原始區間固定為 `updatedAt` 後 0–30、30–60、60–90、90–120 分鐘。每段保存原始 `periodStartAt`／`periodEndAt`；API 回應時只計算尚餘覆蓋及 `isPartiallyElapsed`，不改寫第一段起點，也不按餘下時間比例縮放完整半小時雨量。採用保守政策：進行中第一段仍參與評分，但文案明示雨量屬完整半小時累計預測、部分時段已經過去。`firstRainWindow` 是尚未完結 periods 中第一組雨量不少於 0.5 mm 的連續區間，遇到第一段低於門檻便結束；較後再次出現的雨由 peak 及實際 scoring driver 分開表達。
 
@@ -254,9 +256,11 @@ Soft TTL 後的 refresh 若失敗，可回傳同一個已驗證 snapshot，但�
 
 2026-08-02 實測舊五欄 CSV 在 60 秒內只傳送約 475 KB／2.70 MB，單靠延長 timeout 無法成為可靠產品功能。DATA.GOV.HK 的同一 dataset 提供官方 CSDI ZIP；實測檔案約 16 KB、3.4 秒完成，內含約 216 KB、840 格點 × 4 時段的十七欄 CSV。Runtime 改用 ZIP，既有地區格點、freshness、cache、normalization、評分及 UI 契約不變。
 
-ZIP transport 只接受單一、未加密、deflate 壓縮且檔名固定的 CSV entry；使用 Node 內建 `zlib`，壓縮後限制 512 KiB、解壓後限制 5 MiB，CSV 仍限制 100,000 列及完整 8 秒 deadline。CSDI 產生器會改變十七欄順序，因此 parser 驗證精確欄名集合後按名稱映射；缺少、額外或重複欄仍會拒絕。沒有加入 dependency，亦不使用第三方天氣服務。
+ZIP transport 只接受單一、未加密、deflate 壓縮且檔名固定的 CSV entry；實作以直接 production dependency `yauzl@3.4.0` 讀取及解壓 entry，並以 Node `zlib.crc32`（可用時）或本地相容 fallback 驗證 central directory 宣告的 CRC-32。壓縮後限制 512 KiB、解壓後限制 5 MiB，CSV 仍限制 100,000 列及完整 8 秒 deadline。
 
-理由：這是同一官方資料的較小傳輸格式，能直接修正冷啟動長期逾時，而不需要移除未來降雨功能、建立背景工作、資料庫或付費服務。此決策取代 D-033 對 2.7 MB CSV transport 的安排；fresh-if-error 與來源 hard expiry 規則繼續有效。
+CSDI 產生器會改變十七欄順序，因此 parser 只接受恰好 17 個唯一官方欄名，再按名稱映射；每列亦必須恰好 17 欄。舊五欄 header、缺少、額外或重複欄均明確拒絕，不設 feature flag、fallback 或 migration mode。上游 request 只宣告接受 `application/zip` 與較低優先序的 `application/octet-stream`，response 亦只接受這兩種 Content-Type。此契約取代 D-025 的舊五欄 transport／parser 安排，既有 freshness、cache、normalization、評分與 UI 契約維持不變，亦不使用第三方天氣服務。
+
+理由：這是同一官方資料的較小傳輸格式，能直接修正冷啟動長期逾時，而不需要移除未來降雨功能、建立背景工作、資料庫或付費服務。此決策取代 D-025 對 2.7 MB CSV transport 的安排；D-033 的 fresh-if-error 與來源 hard expiry 規則繼續有效。
 
 ## D-035：地區 pill 原地展開為全寬 overlay
 
@@ -327,3 +331,17 @@ WeatherScene 不再把天氣圖示、過去一小時雨量、warning snapshot �
 目前 Next.js App Router 會在 production HTML 產生 inline hydration script，layout 與離線頁亦有必要 inline script，React 元件則使用 style attribute，因此 production 暫時只在 `script-src` 與 `style-src` 保留 `'unsafe-inline'`。`'unsafe-eval'` 及同源 `__nextjs_font` 只供 Next.js development 使用；production 明確排除 eval 並維持 `font-src 'none'`。沒有允許 `data:`、`blob:`、通配符或外部網域。本階段沒有 remote CSP report collector，Report-Only 違規只透過本機或自動瀏覽器測試的 console 觀察；只有在建立有界限、重視私隱且具實際監控用途的 collector 時才加入 `report-to` 或 `report-uri`，不保留只丟棄資料卻消耗 Function 請求的 endpoint。
 
 理由：nonce 架構會把目前的動態首頁全面改為逐請求渲染，超出本輪 Report-Only 量測範圍。先用可運作且可分類的最小政策取得 Chromium／WebKit 證據，再另行評估 nonce 或 hash，避免把開發工具、server-side 來源或不必要網域誤加入 production CSP。
+
+## D-044：AQHI 數值與官方健康風險級別必須一致
+
+AQHI parser 除了分別驗證數值格式與五個官方健康風險字眼，亦驗證固定配對：1–3 Low、4–6 Moderate、7 High、8–10 Very High、10+ Serious。不一致的站點列會標示問題並逐列排除，不會自行推導或覆寫上游文字；同一回應內其他有效站點仍可使用。
+
+理由：評分採 AQHI 數值，UI 同時展示健康風險文字；若兩者矛盾但都各自合法，便會向使用者呈現互相衝突的健康資訊。拒絕不一致列可維持官方資料的可追溯性，也符合 malformed fields 不應靜默影響結果的產品原則。
+
+同一對照亦在 browser-facing internal route boundary 重驗：AQHI metric 有值時 `healthRisk` 必須精確配對；metric 無值時 `healthRisk` 必須為 `null`。這不是第二套 mapping，而是重用 server parser 的單一對照，避免 route contract drift 或測試 fixture 繞過 D-044。
+
+## D-045：測試 provenance 不進入 production warning payload
+
+Warning summary 的根層 key 是上游動態 warning family，production parser 不保留供 fixture 使用的 key prefix，也不靜默略過 `$` 開頭項目。Live fixture 的 provenance 統一存放於既有 `tests/fixtures/_metadata.json`；payload fixture 只保留官方回應形狀。
+
+理由：若 production parser 為測試資料保留 `$metadata` 特例，未來任何同 prefix 的有效 warning family 都會被當成測試欄位而無 issue 消失，並令 warning snapshot 錯誤保持完整。把 metadata 移回既有 out-of-band registry 可同時刪除重複資料與整個 runtime bypass。

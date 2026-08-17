@@ -421,11 +421,6 @@ export function parseWarnsum(input: unknown): ParseResult<HkoWarningSummary> {
   const issues: ValidationIssue[] = [];
   const warnings: HkoWarningSummary = {};
   for (const [key, rawItem] of Object.entries(input)) {
-    // Fixtures may carry non-production provenance in a JSON metadata key.
-    if (key.startsWith("$")) {
-      continue;
-    }
-
     const warning = parseWarningItem(rawItem, `$.${key}`, issues);
     if (warning !== undefined) {
       warnings[key] = warning;

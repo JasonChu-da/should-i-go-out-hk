@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 import aqhiFixture from "@/tests/fixtures/aqhi-live-sanitized.json";
 import forecastFixture from "@/tests/fixtures/flw-live-sanitized.json";
@@ -15,7 +13,10 @@ import { buildRainfallNowcastSnapshot } from "@/lib/normalization/rainfall-nowca
 import { buildOutlookPayload } from "@/lib/outlook/aggregate";
 import { toScoringInput } from "@/lib/outlook/scoring-input";
 import { scoreOutlook } from "@/lib/scoring/score";
-import { parseRainfallNowcastCsv } from "@/lib/validation/rainfall-nowcast";
+import {
+  CSDI_RAINFALL_NOWCAST_HEADER,
+  parseRainfallNowcastCsv,
+} from "@/lib/validation/rainfall-nowcast";
 
 const NOW = new Date("2026-07-14T12:20:00.000Z");
 
@@ -28,18 +29,35 @@ const unavailable: ApiFetchFailure = {
   error: { type: "network", message: "暫時未能連線至政府資料服務，請稍後再試。" },
 };
 
-const nowcastCsv = readFileSync(
-  new URL(
-    "./fixtures/gridded-rainfall-nowcast-live-sanitized.csv",
-    import.meta.url,
+const nowcastCsv = [
+  CSDI_RAINFALL_NOWCAST_HEADER.join(","),
+  ...[
+    [20, 42],
+    [21, 12],
+    [21, 42],
+    [22, 12],
+  ].map(([endingHour, endingMinute]) =>
+    [
+      2026,
+      7,
+      14,
+      20,
+      12,
+      "",
+      "UTC+8",
+      2026,
+      7,
+      14,
+      endingHour,
+      endingMinute,
+      "",
+      "UTC+8",
+      22.2819,
+      114.1588,
+      0,
+    ].join(","),
   ),
-  "utf8",
-)
-  .replaceAll("202607301712", "202607142012")
-  .replaceAll("202607301742", "202607142042")
-  .replaceAll("202607301812", "202607142112")
-  .replaceAll("202607301842", "202607142142")
-  .replaceAll("202607301912", "202607142212");
+].join("\n");
 const parsedNowcast = parseRainfallNowcastCsv(nowcastCsv);
 if (!parsedNowcast.ok) throw new Error("測試用降雨預報 CSV 無法解析");
 const nowcastSnapshot = buildRainfallNowcastSnapshot(

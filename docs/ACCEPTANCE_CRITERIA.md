@@ -1,6 +1,6 @@
 # MVP 驗收準則
 
-證據更新：2026-08-02，程式基準 commit `14a0ba8`。`[x]` 只代表已有程式碼、測試或本輪實際指令證據；headless Chromium／viewport 模擬不等於 Android 或 iPhone 實機驗收。
+證據更新：2026-08-12，工作樹 HEAD `7ff83a58a5a55e39843bb98fab3fa608ed6f3612` 加上受保護的未提交修改。`[x]` 只代表已有程式碼、測試或本輪實際指令證據；本機 production smoke 不等於正式 HTTPS 部署，headless browser／viewport 模擬亦不等於 Android 或 iPhone 實機驗收。日期化完整證據見 `docs/LONG_TERM_GOAL.md` 及 `docs/QA_REPORT.md`。
 
 ## 專案設定
 
@@ -14,11 +14,12 @@
 
 ## 資料
 
-- [ ] 正式環境可即時取得 HKO current weather；程式與 fixture 測試存在，但本輪未對部署環境做 live smoke test。
-- [ ] 正式環境可即時取得 HKO warning；程式與 fixture 測試存在，但本輪未對部署環境做 live smoke test。
-- [ ] 正式環境可即時取得 AQHI；程式與 fixture 測試存在，但本輪未對部署環境做 live smoke test。
-- [ ] 正式環境可即時取得 HKO gridded rainfall nowcast ZIP；server route、transport 與 sanitized fixture 已測試，但本輪未對部署環境做 live smoke test。
+- [x] 本機 production route 於 2026-08-12 即時取得 HKO current weather；正式 HTTPS 部署仍另列待驗。
+- [x] 本機 production route 於 2026-08-12 即時取得 HKO warning；當次為 fresh、`status: ok`，正式 HTTPS 部署仍另列待驗。
+- [x] 本機 production route 於 2026-08-12 即時取得 HKO local forecast 及環保署 AQHI；正式 HTTPS 部署仍另列待驗。
+- [x] 本機 production route 於 2026-08-12 即時取得 HKO CSDI gridded rainfall nowcast ZIP，五來源 metadata 均通過 runtime 驗證；正式 HTTPS 部署仍另列待驗。
 - [x] 外部 API 及 browser payload 均有 runtime validation（`tests/parsers.test.ts`、`tests/outlook-payload-validation.test.ts`）。
+- [x] AQHI 數值與官方健康風險級別必須配對；互相矛盾的站點列會逐列排除，browser route contract 亦會拒絕矛盾或殘留 label，不會讓評分數值與 UI 文字衝突（`tests/parsers.test.ts`、`tests/outlook-payload-validation.test.ts`）。
 - [x] Missing optional fields 不會令應用崩潰（parser／normalization tests）。
 - [x] UI 顯示來源發布時間及本站擷取時間（UI／E2E tests）。
 - [x] Stale 資料會被辨識並排除於計分（freshness／normalization／scoring tests）。
@@ -47,7 +48,7 @@
 - [x] Loading、partial failure、complete failure、retry 及資料 malformed 狀態有 UI／E2E 覆蓋。
 - [x] 資料來源、發布時間及擷取時間可見。
 - [x] 360px、390px 及 desktop viewport 無水平 overflow；桌面 scrollbar gutter 不侵佔手機寬度。
-- [ ] Dark mode 目前有固定 dark color-scheme 與既有人工紀錄，但本輪沒有獨立自動視覺 assertion 或實機覆核。
+- [x] 固定 dark color-scheme 已在 Chromium／WebKit 的 390×844、1280×720 browser viewport 獨立驗證背景、文字、focus、status、axe 及 overflow；此項不冒充實機覆核。
 - [x] 狀態不只依賴顏色，並有文字、ARIA／語意標籤及鍵盤 focus tests。
 - [x] 同一降雨卡分開顯示過去一小時觀測與未來降雨，不新增第五張主卡。
 - [x] 未來降雨顯示剩餘覆蓋、首個連續雨段、來源時間及近似時間範圍。
@@ -84,7 +85,7 @@
 - [x] 同一 `/sw.js` URL 的新版會 waiting，舊 clients 關閉後 activate，並只清理本應用舊 cache。
 - [ ] Android Chrome 實際安裝對話框與 standalone 啟動仍需部署後以 Android 實機驗證。
 - [ ] iPhone Safari 分享選單、「加入主畫面」及 standalone 行為仍需部署後以 iPhone 實機驗證。
-- [ ] 正式 HTTPS 網址、Vercel Function region、live `/api/outlook` 及五個官方來源仍未在本輪實際部署驗證。
+- [ ] 正式 HTTPS 網址、Vercel preview／production Ready、`hkg1` 實際 Function region、live `/api/outlook` 及五個官方來源仍未在本輪實際部署驗證；本機 production live smoke 不取代此項。
 
 ## 私隱
 

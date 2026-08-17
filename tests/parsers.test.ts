@@ -166,6 +166,25 @@ describe("parseWarnsum", () => {
     expect(result.value).not.toHaveProperty("$metadata");
   });
 
+  it("不會把合法的 $ 開頭動態 warning key 當作 fixture metadata", () => {
+    const result = expectSuccess(
+      parseWarnsum({
+        $FUTURE: {
+          name: "新增警告類別",
+          code: "FUTURE",
+          actionCode: "ISSUE",
+        },
+      }),
+    );
+
+    expect(result.issues).toEqual([]);
+    expect(result.value.$FUTURE).toEqual({
+      name: "新增警告類別",
+      code: "FUTURE",
+      actionCode: "ISSUE",
+    });
+  });
+
   it("把成功空 object 保留為沒有警告，而非來源失敗", () => {
     const result = expectSuccess(parseWarnsum(warnsumEmpty));
 
@@ -270,26 +289,32 @@ describe("parseAqhi", () => {
     });
   });
 
-  it("接受 1 至 10 的 numeric string 及 10+", () => {
+  it("接受每個 numeric string 級別邊界及 10+", () => {
+    const values = [
+      ["1", "Low"],
+      ["3", "Low"],
+      ["4", "Moderate"],
+      ["6", "Moderate"],
+      ["7", "High"],
+      ["8", "Very High"],
+      ["10", "Very High"],
+      ["10+", "Serious"],
+    ] as const;
     const result = expectSuccess(
-      parseAqhi([
-        {
-          station: "Central/Western",
-          aqhi: "1",
-          health_risk: "Low",
+      parseAqhi(
+        values.map(([aqhi, health_risk], index) => ({
+          station: `Station ${index}`,
+          aqhi,
+          health_risk,
           publish_date: "2026-07-14T19:30:00",
-        },
-        {
-          station: "Causeway Bay",
-          aqhi: "10+",
-          health_risk: "Serious",
-          publish_date: "2026-07-14T19:30:00",
-        },
-      ]),
+        })),
+      ),
     );
 
     expect(result.issues).toEqual([]);
-    expect(result.value.map(({ aqhi }) => aqhi)).toEqual(["1", "10+"]);
+    expect(result.value.map(({ aqhi }) => aqhi)).toEqual(
+      values.map(([aqhi]) => aqhi),
+    );
   });
 
   it("接受官方實測的 Very high 大小寫並正規化", () => {
@@ -313,6 +338,25 @@ describe("parseAqhi", () => {
         publish_date: "2026-07-14T19:30:00",
       },
     ]);
+  });
+
+  it("拒絕與 AQHI 數值矛盾的健康風險級別", () => {
+    const result = expectSuccess(
+      parseAqhi([
+        {
+          station: "Sha Tin",
+          aqhi: 10,
+          health_risk: "Low",
+          publish_date: "2026-07-14T19:30:00",
+        },
+      ]),
+    );
+
+    expect(result.value).toEqual([]);
+    expect(result.issues).toContainEqual({
+      path: "$[0].health_risk",
+      message: "與 AQHI 數值不一致",
+    });
   });
 
   it("單列錯誤只排除該列，未知欄位則容許", () => {

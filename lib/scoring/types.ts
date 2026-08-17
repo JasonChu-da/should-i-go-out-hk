@@ -6,11 +6,10 @@ export type ActivityMode = "general" | "exercise" | "laundry";
 export const ACTIVITY_MODES: ReadonlyArray<{
   id: ActivityMode;
   label: string;
-  shortLabel: string;
 }> = [
-  { id: "general", label: "一般外出", shortLabel: "外出" },
-  { id: "exercise", label: "跑步／踩單車", shortLabel: "運動" },
-  { id: "laundry", label: "晾衫", shortLabel: "晾衫" },
+  { id: "general", label: "一般外出" },
+  { id: "exercise", label: "跑步／踩單車" },
+  { id: "laundry", label: "晾衫" },
 ];
 
 export type EvidenceUnavailableStatus =

@@ -1,6 +1,25 @@
 # MVP 驗收與 QA 紀錄
 
-本文件保留各輪驗收的日期化證據；最新候選版結果見 2026-08-10 章節，測試檔案及案例數一律以該輪實際指令輸出為準，不沿用過期的固定快照。
+本文件保留各輪驗收的日期化證據；最新本機候選版結果見 2026-08-14 章節，測試檔案及案例數一律以該輪實際指令輸出為準，不沿用過期的固定快照。
+
+## 2026-08-14：代碼健康審計補充複核
+
+- 修改前 lint、typecheck、441／441 unit tests、build、兩種 audit 及 dependency tree 均通過；四個官方 JSON endpoint 及 CSDI ZIP 即時回應符合既有 schema，ZIP 為單一 17 欄 CSV、3,360 筆資料列。
+- 新增 AQHI 數值／健康風險配對 regression 後，舊 parser 明確為 1 failed／22 passed；在單列 trust boundary 拒絕矛盾資料後，目標測試 23／23、完整測試 441／441 通過。
+- 最終 coverage 為 statements 91.72%、branches 85.84%、functions 92.23%、lines 94.39%；lint、typecheck、額外 unused 檢查及 Next.js 16.2.12 production build 全部通過。
+- Chromium／WebKit 一般 E2E 56／56、production Chromium PWA E2E 10／10 通過；涵蓋 axe、鍵盤、暗色、reduced motion、responsive、圖片失敗、離線、請求競態及 Service Worker 更新。
+- production smoke 最終驗證首頁 200、香港整體 API 200、無效地區 400、五來源全為 `ok`、`private, no-store` 及 Report-Only CSP。首次 smoke harness 因 PowerShell `$home` 與唯讀內建變數撞名而在發出 HTTP 前失敗；該 PID 與 port 已釋放，改用非保留變數重跑後通過，屬測試指令問題而非產品失敗。
+- 兩種 npm audit 均為 0 vulnerabilities，dependency tree 完整；production source 淨減 29 行，沒有 dependency、公開 API、評分門檻或 client bundle 功能增加。
+
+## 2026-08-12：長期目標 Checkpoint 1–3 證據
+
+本輪從 HEAD `7ff83a58a5a55e39843bb98fab3fa608ed6f3612` 及受保護的既有未提交 CSDI 17 欄修改開始；原始 diff 已另存並核對 SHA-256，沒有 reset、checkout、clean、commit、push 或歷史改寫。`git fetch --prune origin` 因 GitHub 443 連線失敗，故本機 `origin/main` 沒有被誤稱為本輪已刷新。
+
+- CSDI live ZIP 於 19:42:59 HKT 回傳 200、`application/zip`、11,939 bytes；單一 CSV 有 17 個唯一欄名、3,360 列、四個連續時段及 `UTC+8`。修正十進位 trust boundary、多值 Content-Type 及拒絕／超限 body cleanup，並補 100,001 列等最小回歸測試。
+- 最終品質閘門：lint、typecheck、21 files／437 tests coverage、Next.js 16.2.12 build、Chromium＋WebKit 52／52 E2E、Chromium 10／10 production PWA E2E、兩種 high audit、dependency tree 及 diff check 全部 exit 0。Coverage 為 statements 91.75%、branches 85.62%、functions 93.15%、lines 94.29%。
+- 20:25:48 HKT 的本機 production smoke 以 PID 17416 驗證首頁、manifest、Service Worker、offline fallback、12 個 Next 靜態資源、香港整體與十八區 19／19 runtime-valid payload、非法 location 400、`private, no-store` 及 security headers。五個官方來源均為 fresh／`ok`；完整一次性 JSON 證據的 SHA-256 為 `D347DBCD3BAA88BC14171237271EDDC482F340E3A43105001625CE0451B68AFC`。受控 payload 複本另驗證 stale／malformed／failed 不計分及 warning failed 不會被描述為安全；這不是 live 上游故障。PID 已精確關閉且 3101 沒有 listener。
+
+仍待獨立驗收：production CSP 雙瀏覽器觀察、Vercel preview／production HTTPS、`hkg1` runtime 證據，以及 Android／iPhone 實機。這些項目不由上述本機或 headless 結果替代。
 
 驗收日期：2026-07-14（HKT）
 
@@ -257,7 +276,9 @@ active storm 2 秒 production 取樣為 `LayoutCountDelta = 0`、`LayoutDuration
 
 本輪沒有建立 commit、推送、部署或上傳 GitHub。
 
-## 2026-07-30：未來兩小時降雨臨近預報
+## 2026-07-30：未來兩小時降雨臨近預報（歷史五欄版本）
+
+> 本節如實保留當時五欄 endpoint、無 fresh-if-error cache 的驗收紀錄；現行 transport／parser 已由 2026-08-11 CSDI 17 欄單向切換取代，cache failure 行為則由 D-033 取代。下列內容不得當作目前 runtime 契約或本輪通過證據。
 
 ### 官方資料重驗
 
@@ -375,3 +396,19 @@ Smoke 無論成功或失敗均由 `finally` 只處理保存的 PID；本輪已�
 - 五個官方來源本輪全部成功，未實際遇到 live stale／malformed／unavailable 回應；這些 fail-safe 由 live payload 的受控降級檢查及完整自動測試驗證。
 - CSP 按範圍維持 report-only，沒有新增 reporting backend。
 - npm `11.8.0` 在此 Windows 環境於乾淨 `npm ci` 後可能再次留下 6 個 optional WASM 孤兒目錄；它們不在 lockfile root tree 或 production bundle，但要以 `npm ls --depth=0` 驗收並按已記錄的精確路徑處理。
+
+## 2026-08-12：長期目標 Checkpoint 7 自動驗收與實機阻塞
+
+- `e2e/outlook.spec.ts` 在 warning unavailable 狀態加入 axe 掃描，並新增固定 dark theme 在 light／dark 系統偏好下的背景、文字、theme-color、focus 與水平 overflow assertion；目標 Chromium／WebKit 4／4 通過，完整數量見本輪終局品質閘門。
+- 最新 production live browser 證據保存於 task 專屬 `checkpoint-7-browser.json`（3,949 bytes，SHA-256 `C2327AA15AD93A9D433F6D54121D4CAC440D2A14FE733792B1CAB55D12ECF9B3`）。Chromium／WebKit 的 normal、dialog、offline 三種 axe 掃描全為 0 violations；焦點還原、reduced-motion、390×844／1280×720 overflow 均通過，0 page error、0 request failure。人工檢視兩瀏覽器截圖後亦未見裁切、遮擋或低對比問題。
+- 可見 browser 的人工鍵盤流程確認：已選地區取得初始焦點、Tab／Shift+Tab 不離開 dialog、Escape 關閉並還原地區按鈕焦點。這只是桌面 browser 驗收。
+- 本機沒有 `adb` 或 libimobiledevice／ios-deploy 工具，也沒有 present Android／Apple Mobile PnP 裝置；因此沒有 Android Chrome 安裝提示、iPhone Safari 分享選單、standalone、更新／離線／重連或 safe-area 的正式實機結果，checkpoint 7 保持受阻。
+- 最短人工 checklist：兩部實機依次開同一正式 HTTPS URL；記錄裝置／OS／browser 版本；加入主畫面並 standalone 啟動；驗證更新、離線、重連及直／橫向 safe-area；每部保存一張可核對截圖。
+
+### 本輪終局品質閘門
+
+- lint、typecheck、production build、`git diff --check`：全部 exit 0。
+- `npm run test:coverage` 與 `npm test`：21 files、437／437 tests；statements 91.75%（1647／1795）、branches 85.62%（1382／1614）、functions 93.15%（286／307）、lines 94.29%（1554／1648）。
+- `npm run test:e2e`：Chromium 27＋WebKit 27，共 54／54 通過；`npm run test:e2e:pwa`：Chromium 10／10 通過。
+- `npm audit --audit-level=high`、`npm audit --omit=dev --audit-level=high` 均為 0 vulnerabilities；`npm ls --depth=0` 列出 16 個 direct dependencies，沒有 missing／extraneous。
+- 全部本輪測試／smoke ports 均無 listener；Git 仍為 `main`／HEAD `7ff83a58a5a55e39843bb98fab3fa608ed6f3612`，沒有 commit、push 或歷史改寫。

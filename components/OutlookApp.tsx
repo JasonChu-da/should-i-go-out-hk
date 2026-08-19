@@ -386,7 +386,7 @@ export default function OutlookApp({ initialPeriod }: OutlookAppProps) {
 
     locationPanel.current
       ?.querySelector<HTMLElement>('.district-button[aria-pressed="true"]')
-      ?.focus();
+      ?.focus({ preventScroll: true });
   }, [pickerExpanded]);
 
   useEffect(() => {

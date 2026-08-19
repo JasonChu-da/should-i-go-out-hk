@@ -1,8 +1,22 @@
 # 「香港現在適合出門嗎？」MVP 實作計劃
 
-更新日期：2026-08-17
+更新日期：2026-08-20
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
+
+## 2026-08-20：地區膠囊展開時標題列跳動修正
+
+- [x] 逐幀量度膠囊外框、標題列、定位圖標及文字位置，確認跳動根因
+- [x] 加入展開期間標題列位置及面板 `scrollTop` 回歸檢查
+- [x] 以原生焦點選項阻止展開 autofocus 捲動面板，不改形變動畫、焦點順序或 reduced-motion 行為
+- [x] 執行目標瀏覽器測試、lint、完整 unit tests、production build 及最終視覺驗證
+
+### 最終驗證
+
+- 舊實作的 Chromium 回歸檢查穩定失敗：展開首段 `.location-panel.scrollTop` 及標題列最大位移均為 198px
+- 修正後 Chromium／WebKit 目標 E2E 2／2 通過；production 1280×720 逐幀量度為 `scrollTop = 0`、標題列／圖標／文字最大垂直位移 0px
+- `npm run lint`、`npm run typecheck`、`npm run build` 通過；`npm test` 為 21 files、442／442 通過
+- Production 頁面有完整內容、展開面板及正確焦點，沒有 error overlay、console error 或 page error；`git diff --check` 通過
 
 ## 2026-08-19：GitHub Actions PWA 更新測試競態修正
 

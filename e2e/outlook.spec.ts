@@ -787,7 +787,36 @@ test("地區膠囊原地展開並覆蓋內容", async ({ page }) => {
   expect(collapsedStyle.pillOutline).toBe("none");
 
   const picker = page.locator(".quick-controls");
-  await trigger.evaluate((element: HTMLButtonElement) => element.click());
+  const headerMotion = await trigger.evaluate(
+    async (element: HTMLButtonElement) => {
+      const panel = document.querySelector<HTMLElement>(".location-panel")!;
+      const initialTop = element.getBoundingClientRect().top;
+      let maxPanelScrollTop = 0;
+      let maxVerticalDelta = 0;
+
+      element.click();
+      const startedAt = performance.now();
+      await new Promise<void>((resolve) => {
+        const sample = (now: number) => {
+          maxPanelScrollTop = Math.max(maxPanelScrollTop, panel.scrollTop);
+          maxVerticalDelta = Math.max(
+            maxVerticalDelta,
+            Math.abs(element.getBoundingClientRect().top - initialTop),
+          );
+          if (now - startedAt >= 220) {
+            resolve();
+            return;
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      });
+
+      return { maxPanelScrollTop, maxVerticalDelta };
+    },
+  );
+  expect(headerMotion.maxPanelScrollTop).toBe(0);
+  expect(headerMotion.maxVerticalDelta).toBeLessThan(0.5);
   await expect
     .poll(() =>
       page

@@ -4,6 +4,42 @@
 
 狀態標記：`[x]` 已完成並驗證、`[ ]` 尚未完成。只有通過該階段的驗證，才會標記完成。
 
+## 2026-08-19：GitHub Actions PWA 更新測試競態修正
+
+- [x] 讀取 `main` 最新 GitHub Actions 完整失敗步驟，確認只有 PWA 更新生命週期測試在 Ubuntu 超時，其餘品質閘門及 PWA 9／10 通過
+- [x] 比對 CI 與本機兩代 service worker 狀態：新版已進入 `installed`／waiting，測試卻在舊 clients 關閉前預先建立觀察頁，隨後導航可重新成為舊 worker client 並阻塞 activate
+- [x] 改由 Playwright 的新版 service worker handle 直接等待 activation，之後才建立驗證頁；不改 production worker、cache 或更新策略
+- [x] 執行定向重複測試、lint、typecheck、完整 unit、production build、Chromium／WebKit E2E、PWA E2E 及 diff check
+- [x] 複核動態背景修正與 PWA CI 修正形成單一、可審核且可提交的工作樹；不 commit、push 或部署
+
+### 最終驗證
+
+- GitHub Actions 失敗證據：PWA 9／10 通過；唯一失敗在 `e2e/pwa.spec.ts` 更新測試，舊 clients 關閉後 15 秒仍收到 waiting state `installed`
+- 修正後定向更新測試連跑 20／20 通過
+- `npm run lint`、`npm run typecheck`、`npm run build` 通過
+- `npm test`：21 files、442／442 通過
+- `npm run test:e2e`：Chromium／WebKit 58／58 通過
+- `npm run test:e2e:pwa`：production Chromium 10／10 通過
+- `git diff --check` 通過；沒有修改 production service worker、dependency、公開 API、cache 或更新策略
+
+## 2026-08-17：動態背景偏好誤停載入圈修正
+
+- [x] 在正式站及現有 Chrome 分頁確認系統 reduced motion 為關，但 `data-weather-motion="off"` 令全站 `animation: none`
+- [x] 加入「關閉動態背景仍保留功能性載入動畫」瀏覽器回歸測試，先證實舊 CSS 的 `animation-name: none` 失敗
+- [x] 刪除過度寬泛的全站 animation／transition override；WeatherScene 繼續由既有 `data-motion` 與 React 狀態停用
+- [x] 更新動態背景決策語義，執行 lint、typecheck、完整 unit、production build、Chromium／WebKit E2E 及 PWA E2E
+- [x] 複核最終 diff 與本機修復前後行為；正式站待重新部署後驗收
+
+### 最終驗證
+
+- 修復前定向回歸：舊 CSS 如預期失敗，spinner 的 `animation-name` 為 `none`
+- 修復後定向回歸：Chromium／WebKit 2/2 通過
+- `npm run lint`、`npm run typecheck`、`npm run build` 通過
+- `npm test`：442/442 通過
+- `npm run test:e2e`：58/58 通過
+- `npm run test:e2e:pwa`：10/10 通過
+- `git diff --check` 通過
+
 ## 2026-08-17：全專案代碼健康審計與技術債治理
 
 ### 修改前問題清單

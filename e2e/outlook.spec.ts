@@ -450,6 +450,54 @@ for (const viewport of [
   });
 }
 
+test("關閉動態背景仍保留載入進度動畫", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("weather-scene-motion:v1", "off");
+  });
+  let releaseApi!: () => void;
+  const apiGate = new Promise<void>((resolve) => {
+    releaseApi = resolve;
+  });
+  await page.route("**/api/outlook?*", async (route) => {
+    await apiGate;
+    const locationId = (new URL(route.request().url()).searchParams.get(
+      "location",
+    ) ?? "hong-kong") as LocationId;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify(buildOutlookFixture(locationId)),
+    });
+  });
+
+  await page.goto("/");
+  const spinner = page.locator(".spinner");
+  try {
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-weather-motion",
+      "off",
+    );
+    await expect(spinner).toBeVisible();
+    await expect(spinner).toHaveCSS("animation-name", "spin");
+    await expect(spinner).toHaveCSS("animation-iteration-count", "infinite");
+    await expect
+      .poll(() =>
+        spinner.evaluate(
+          (element) => element.getAnimations()[0]?.playState ?? null,
+        ),
+      )
+      .toBe("running");
+  } finally {
+    releaseApi();
+  }
+
+  await expect(page.locator('main[data-outlook-state="ready"]')).toBeVisible();
+  await expect(page.locator(".weather-scene")).toHaveAttribute(
+    "data-motion",
+    "off",
+  );
+});
+
 test("目前天氣背景載入完成前持續顯示 neutral 背景", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   let releaseBackground!: () => void;

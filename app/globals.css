@@ -1414,23 +1414,6 @@ a:hover {
   text-decoration-thickness: 0.14em;
 }
 
-html[data-weather-motion="off"] {
-  scroll-behavior: auto;
-}
-
-html[data-weather-motion="off"] *,
-html[data-weather-motion="off"] *::before,
-html[data-weather-motion="off"] *::after {
-  animation: none !important;
-  scroll-behavior: auto !important;
-  transition: none !important;
-}
-
-/* This zero-duration delayed reveal is functional fallback content, not motion. */
-html[data-weather-motion="off"] .loading-timeout-hint {
-  animation: reveal-loading-timeout 0s linear 14s forwards !important;
-}
-
 .motion-toggle-dot {
   position: absolute;
   right: 0.35rem;

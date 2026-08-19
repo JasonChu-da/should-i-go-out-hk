@@ -50,6 +50,10 @@ interface CachedResponse {
   url: string;
 }
 
+interface ServiceWorkerContext {
+  registration: ServiceWorkerRegistration;
+}
+
 let apiMode: ApiMode;
 let apiRequests: ApiRequestRecord[];
 
@@ -783,15 +787,17 @@ test("同一 /sw.js URL 的新版會 waiting，全部舊分頁關閉後才 activ
   await waitForController(secondPage);
 
   await setWorkerVersion(request, VERSION_V2);
+  const updatedWorkerPromise = context.waitForEvent("serviceworker");
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration("/");
     await registration?.update();
   });
+  const updatedWorker = await updatedWorkerPromise;
   await expect
     .poll(() =>
-      page.evaluate(async () => {
-        const registration = await navigator.serviceWorker.getRegistration("/");
-        return registration?.waiting?.state ?? null;
+      updatedWorker.evaluate(() => {
+        const { registration } = self as unknown as ServiceWorkerContext;
+        return registration.waiting?.state ?? null;
       }),
     )
     .toBe("installed");
@@ -821,11 +827,21 @@ test("同一 /sw.js URL 的新版會 waiting，全部舊分頁關閉後才 activ
     ),
   ).toEqual(oldCacheRecords);
 
-  const observerPage = await context.newPage();
   await secondPage.close();
   await page.close();
+  await expect
+    .poll(() =>
+      updatedWorker.evaluate(() => {
+        const { registration } = self as unknown as ServiceWorkerContext;
+        return {
+          active: registration.active?.state ?? null,
+          waiting: registration.waiting?.state ?? null,
+        };
+      }),
+    )
+    .toEqual({ active: "activated", waiting: null });
 
-  const updatedPage = observerPage;
+  const updatedPage = await context.newPage();
   await expect(async () => {
     await updatedPage.goto("/", { timeout: 5_000 });
   }).toPass({ timeout: 20_000 });
@@ -834,15 +850,6 @@ test("同一 /sw.js URL 的新版會 waiting，全部舊分頁關閉後才 activ
   ).toBeVisible();
   await expect(updatedPage.getByRole("progressbar")).toHaveCount(1);
   await waitForController(updatedPage);
-  await expect
-    .poll(() =>
-      updatedPage.evaluate(async () => {
-        const registration =
-          await navigator.serviceWorker.getRegistration("/");
-        return registration?.waiting?.state ?? null;
-      }),
-    )
-    .toBeNull();
 
   const activeCacheNames = await managedCacheNames(updatedPage);
   expect(activeCacheNames.some((name) => name.includes(VERSION_V1))).toBe(false);

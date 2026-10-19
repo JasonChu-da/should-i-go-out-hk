@@ -7,6 +7,7 @@ import {
 import { buildOutlookPayload } from "@/lib/outlook/aggregate";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "hkg1";
 
 function parseLocation(value: string | null): LocationId | null {
   if (value === null || value === HONG_KONG_WIDE.id) return HONG_KONG_WIDE.id;
